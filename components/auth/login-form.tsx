@@ -3,16 +3,20 @@
 import type React from "react"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { authApi } from "@/lib/api/auth"
+import { useToast } from "@/hooks/use-toast"
 
 export function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
@@ -25,14 +29,59 @@ export function LoginForm() {
     e.preventDefault()
     setLoading(true)
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    try {
+      const response = await authApi.login({
+        email: formData.email,
+        password: formData.password,
+      })
 
-    if (formData.email.includes("admin")) {
-      router.push("/admin")
-    } else {
-      // Usuários normais vão para seleção de empresa
-      router.push("/selecionar-empresa")
+      // Mostrar mensagem de sucesso
+      toast({
+        title: "Login realizado com sucesso!",
+        description: `Bem-vindo, ${response.user.name}`,
+      })
+
+      // Verificar se há uma URL de redirecionamento
+      const redirectUrl = searchParams.get('redirect')
+      
+      if (redirectUrl) {
+        // Se há redirect, ir para essa URL
+        router.push(redirectUrl)
+      } else {
+        // Verificar se o usuário tem múltiplas empresas
+        if (response.user.companies.length > 1) {
+          // Redirecionar para seleção de empresa
+          router.push("/selecionar-empresa")
+        } else if (response.user.companies.length === 1) {
+          // Se tem apenas uma empresa, selecionar automaticamente
+          authApi.setSelectedCompany(response.user.companies[0])
+          
+          // Verificar se é admin (pela role ou email)
+          const isAdmin = response.user.companies[0].role.name === 'admin' || 
+                         formData.email.includes('admin')
+          
+          if (isAdmin) {
+            router.push("/admin")
+          } else {
+            router.push("/dashboard")
+          }
+        } else {
+          // Usuário sem empresas
+          toast({
+            title: "Erro",
+            description: "Usuário não está associado a nenhuma empresa",
+            variant: "destructive",
+          })
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erro ao fazer login",
+        description: error.message || "Credenciais inválidas",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
     }
   }
 

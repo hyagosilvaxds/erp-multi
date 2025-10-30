@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { authApi } from "@/lib/api/auth"
 import {
   LayoutDashboard,
   Building2,
@@ -121,7 +122,17 @@ const companyMenuItems = [
     ],
   },
   { icon: ShoppingCart, label: "Vendas", href: "/dashboard/vendas", module: "vendas" },
-  { icon: Package, label: "Produtos", href: "/dashboard/produtos", module: "produtos" },
+  {
+    icon: Package,
+    label: "Produtos",
+    href: "/dashboard/produtos",
+    module: "produtos",
+    submenu: [
+      { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/produtos" },
+      { icon: Package, label: "Lista de Produtos", href: "/dashboard/produtos/lista" },
+      { icon: Settings, label: "Configurações", href: "/dashboard/produtos/configuracoes" },
+    ],
+  },
   { icon: Users, label: "Clientes", href: "/dashboard/clientes", module: "clientes" },
   { icon: FileText, label: "Relatórios", href: "/dashboard/relatorios", module: "relatorios" },
   { icon: Settings, label: "Configurações", href: "/dashboard/configuracoes", module: "configuracoes" },
@@ -135,12 +146,26 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
   const menuItems = userRole === "admin" ? adminMenuItems : companyMenuItems
 
   const [selectedCompany, setSelectedCompany] = useState<any>(null)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [userPermissions, setUserPermissions] = useState<string[]>([])
 
   useEffect(() => {
+    // Carregar usuário logado
+    const user = authApi.getUser()
+    setCurrentUser(user)
+
     if (userRole === "company") {
       const company = localStorage.getItem("selectedCompany")
       if (company) {
-        setSelectedCompany(JSON.parse(company))
+        const parsedCompany = JSON.parse(company)
+        setSelectedCompany(parsedCompany)
+        
+        // Extrair permissões do usuário
+        const permissions = parsedCompany?.role?.permissions || []
+        const permissionNames = permissions.map((p: any) => `${p.resource}.${p.action}`)
+        setUserPermissions(permissionNames)
+        
+        console.log('🔐 Permissões do usuário:', permissionNames)
       }
     }
   }, [userRole])
@@ -150,8 +175,7 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("selectedCompany")
-    router.push("/login")
+    authApi.logout()
   }
 
   const toggleSubmenu = (href: string) => {
@@ -160,6 +184,30 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
 
   const isSubmenuActive = (submenu: any[]) => {
     return submenu.some((item) => pathname === item.href)
+  }
+
+  // Verificar se o usuário tem permissão para acessar o módulo de documentos
+  const hasDocumentsPermission = (): boolean => {
+    // Admin sempre tem acesso
+    if (userRole === "admin") return true
+    
+    // Se não estiver no modo company, mostrar
+    if (userRole !== "company") return true
+    
+    // Verificar permissão de documents.read no backend
+    return userPermissions.includes('documents.read') || 
+           userPermissions.includes('documents.view')
+  }
+
+  // Verificar se o módulo deve ser exibido
+  const shouldShowModule = (module: string): boolean => {
+    // Apenas ocultar o módulo de documentos se não tiver permissão
+    if (module === 'documentos') {
+      return hasDocumentsPermission()
+    }
+    
+    // Todos os outros módulos são exibidos
+    return true
   }
 
   return (
@@ -199,7 +247,9 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
                     <Building2 className="h-4 w-4" />
                   </div>
                   <div className="flex-1 overflow-hidden text-left">
-                    <p className="truncate text-sm font-medium text-sidebar-foreground">{selectedCompany.name}</p>
+                    <p className="truncate text-sm font-medium text-sidebar-foreground">
+                      {selectedCompany.nomeFantasia || selectedCompany.razaoSocial}
+                    </p>
                     <p className="truncate text-xs text-muted-foreground">{selectedCompany.cnpj}</p>
                   </div>
                   <RefreshCw className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -219,7 +269,9 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {menuItems.map((item) => {
+          {menuItems
+            .filter((item) => shouldShowModule(item.module))
+            .map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
           const hasSubmenu = Array.isArray((item as any).submenu)
@@ -301,26 +353,22 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-auto w-full justify-start gap-3 p-0 hover:bg-transparent">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                    <span className="text-sm font-semibold">AD</span>
+                    <span className="text-sm font-semibold">
+                      {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : 'U'}
+                    </span>
                   </div>
                   <div className="flex-1 overflow-hidden text-left">
-                    <p className="truncate text-sm font-medium text-sidebar-foreground">Admin User</p>
-                    <p className="truncate text-xs text-muted-foreground">admin@empresa.com</p>
+                    <p className="truncate text-sm font-medium text-sidebar-foreground">
+                      {currentUser?.name || 'Usuário'}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {currentUser?.email || 'email@exemplo.com'}
+                    </p>
                   </div>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <Users className="mr-2 h-4 w-4" />
-                  Perfil
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Configurações
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
+
+              <DropdownMenuContent>
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sair

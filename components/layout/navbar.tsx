@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { Bell, Search, Moon, Sun, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,6 +22,9 @@ interface NavbarProps {
 }
 
 export function Navbar({ sidebarCollapsed = false, userRole = "company" }: NavbarProps) {
+  const pathname = usePathname()
+  const isAdminRoute = pathname?.startsWith("/admin")
+  
   const [currentTime, setCurrentTime] = useState(new Date())
   const [theme, setTheme] = useState<"light" | "dark">("light")
   const [notifications] = useState([
@@ -91,16 +95,22 @@ export function Navbar({ sidebarCollapsed = false, userRole = "company" }: Navba
     >
       {/* Search */}
       <div className="flex flex-1 items-center gap-4">
-        <div className="relative w-full max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input type="search" placeholder="Buscar..." className="pl-10" />
-        </div>
+        {!isAdminRoute && (
+          <>
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input type="search" placeholder="Buscar..." className="pl-10" />
+            </div>
 
-        {userRole === "company" && selectedCompany && (
-          <div className="hidden items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 lg:flex">
-            <Building2 className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-foreground">{selectedCompany.name}</span>
-          </div>
+            {userRole === "company" && selectedCompany && (
+              <div className="hidden items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 lg:flex">
+                <Building2 className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-foreground">
+                  {selectedCompany.nomeFantasia || selectedCompany.razaoSocial}
+                </span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -123,45 +133,47 @@ export function Navbar({ sidebarCollapsed = false, userRole = "company" }: Navba
         </Button>
 
         {/* Notifications */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative h-9 w-9">
-              <Bell className="h-4 w-4" />
-              {unreadCount > 0 && (
-                <Badge
-                  variant="destructive"
-                  className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs"
-                >
-                  {unreadCount}
-                </Badge>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
-            <DropdownMenuLabel className="flex items-center justify-between">
-              <span>Notificações</span>
-              {unreadCount > 0 && (
-                <Badge variant="secondary" className="ml-2">
-                  {unreadCount} novas
-                </Badge>
-              )}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {notifications.map((notification) => (
-              <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 p-3">
-                <div className="flex w-full items-start justify-between gap-2">
-                  <span className="text-sm font-medium">{notification.title}</span>
-                  {notification.unread && <div className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
-                </div>
-                <span className="text-xs text-muted-foreground">{notification.time}</span>
+        {!isAdminRoute && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="relative h-9 w-9">
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <Badge
+                    variant="destructive"
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs"
+                  >
+                    {unreadCount}
+                  </Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              <DropdownMenuLabel className="flex items-center justify-between">
+                <span>Notificações</span>
+                {unreadCount > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {unreadCount} novas
+                  </Badge>
+                )}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {notifications.map((notification) => (
+                <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 p-3">
+                  <div className="flex w-full items-start justify-between gap-2">
+                    <span className="text-sm font-medium">{notification.title}</span>
+                    {notification.unread && <div className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
+                  </div>
+                  <span className="text-xs text-muted-foreground">{notification.time}</span>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="justify-center text-sm text-primary">
+                Ver todas as notificações
               </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="justify-center text-sm text-primary">
-              Ver todas as notificações
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </header>
   )
