@@ -135,12 +135,15 @@ export interface UpdateFolderRequest {
 
 export interface UploadDocumentRequest {
   file: File
+  title?: string
   name?: string
   description?: string
   folderId?: string
   reference?: string
+  type?: string
   documentType?: string
   tags?: string
+  context?: 'stock_movement' | 'stock_transfer' | 'other'
   expiresAt?: string
   isPublic?: boolean
 }
@@ -569,6 +572,37 @@ export const documentsApi = {
    */
   getDownloadUrl: (id: string): string => {
     return `/documents/${id}/download`
+  },
+
+  /**
+   * Helper para fazer download direto no navegador
+   * Faz download do arquivo e salva automaticamente
+   */
+  downloadFile: async (id: string, fileName?: string): Promise<void> => {
+    try {
+      const blob = await documentsApi.download(id)
+      
+      // Se não foi passado um nome, buscar do documento
+      if (!fileName) {
+        const doc = await documentsApi.getById(id)
+        fileName = doc.fileName || doc.name || 'documento'
+      }
+      
+      // Criar URL temporária e fazer download
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      
+      // Cleanup
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      console.error('Erro ao fazer download:', error)
+      throw error
+    }
   },
 
   /**

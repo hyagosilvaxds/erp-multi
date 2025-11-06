@@ -13,6 +13,7 @@ import {
   Settings,
   ChevronLeft,
   Package,
+  PackageCheck,
   BarChart3,
   CreditCard,
   ShoppingCart,
@@ -27,9 +28,11 @@ import {
   DollarSign,
   PieChart,
   UserCircle,
+  MapPin,
   FolderOpen,
   Plug,
   Scale,
+  ArrowRightLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -130,6 +133,7 @@ const companyMenuItems = [
     submenu: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/produtos" },
       { icon: Package, label: "Lista de Produtos", href: "/dashboard/produtos/lista" },
+      { icon: PackageCheck, label: "Estoque", href: "/dashboard/produtos/estoque" },
       { icon: Settings, label: "Configurações", href: "/dashboard/produtos/configuracoes" },
     ],
   },
@@ -143,6 +147,10 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
   const [expandedMenus, setExpandedMenus] = useState<string[]>([])
   const pathname = usePathname()
   const router = useRouter()
+  
+  console.log('📊 Sidebar - userRole recebido:', userRole)
+  console.log('📊 Sidebar - pathname:', pathname)
+  
   const menuItems = userRole === "admin" ? adminMenuItems : companyMenuItems
 
   const [selectedCompany, setSelectedCompany] = useState<any>(null)
@@ -150,6 +158,7 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
   const [userPermissions, setUserPermissions] = useState<string[]>([])
 
   useEffect(() => {
+    console.log('🔄 Sidebar useEffect - userRole:', userRole)
     // Carregar usuário logado
     const user = authApi.getUser()
     setCurrentUser(user)

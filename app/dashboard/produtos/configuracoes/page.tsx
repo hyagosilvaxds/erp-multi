@@ -79,7 +79,7 @@ export default function ProdutosConfiguracoesPage() {
   const [categoryFormData, setCategoryFormData] = useState({
     name: "",
     description: "",
-    parentId: "",
+    parentId: "none",
     active: true,
   })
   const [savingCategory, setSavingCategory] = useState(false)
@@ -170,7 +170,7 @@ export default function ProdutosConfiguracoesPage() {
     setCategoryFormData({
       name: "",
       description: "",
-      parentId: "",
+      parentId: "none",
       active: true,
     })
     setIsCategoryDialogOpen(true)
@@ -181,7 +181,7 @@ export default function ProdutosConfiguracoesPage() {
     setCategoryFormData({
       name: category.name,
       description: category.description || "",
-      parentId: category.parentId || "",
+      parentId: category.parentId || "none",
       active: category.active,
     })
     setIsCategoryDialogOpen(true)
@@ -206,8 +206,8 @@ export default function ProdutosConfiguracoesPage() {
         active: categoryFormData.active,
       }
 
-      // Adicionar parentId apenas se não for string vazia
-      if (categoryFormData.parentId) {
+      // Adicionar parentId apenas se não for "none"
+      if (categoryFormData.parentId && categoryFormData.parentId !== "none") {
         data.parentId = categoryFormData.parentId
       }
 
@@ -845,7 +845,7 @@ export default function ProdutosConfiguracoesPage() {
                   <SelectValue placeholder="Nenhuma (categoria raiz)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhuma (categoria raiz)</SelectItem>
+                  <SelectItem value="none">Nenhuma (categoria raiz)</SelectItem>
                   {categories
                     .filter((cat) => cat.id !== categoryToEdit?.id)
                     .map((cat) => (
