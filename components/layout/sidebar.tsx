@@ -33,6 +33,7 @@ import {
   Plug,
   Scale,
   ArrowRightLeft,
+  Briefcase,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -70,6 +71,7 @@ const companyMenuItems = [
     submenu: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/financeiro" },
       { icon: CreditCard, label: "Contas Bancárias", href: "/dashboard/financeiro/contas" },
+      { icon: FolderOpen, label: "Categorias", href: "/dashboard/financeiro/categorias" },
       { icon: FileSpreadsheet, label: "Extratos", href: "/dashboard/financeiro/extratos" },
       { icon: RefreshCw, label: "Conciliação", href: "/dashboard/financeiro/conciliacao" },
       { icon: Receipt, label: "Lançamentos", href: "/dashboard/financeiro/lancamentos" },
@@ -84,7 +86,8 @@ const companyMenuItems = [
     module: "investidores",
     submenu: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/investidores" },
-      { icon: Users, label: "Cadastro", href: "/dashboard/investidores/novo" },
+      { icon: Users, label: "Investidores", href: "/dashboard/investidores/novo" },
+      { icon: Briefcase, label: "Projetos", href: "/dashboard/investidores/projetos" },
       { icon: DollarSign, label: "Aportes", href: "/dashboard/investidores/aportes" },
       { icon: PieChart, label: "Políticas", href: "/dashboard/investidores/politicas" },
       { icon: TrendingUp, label: "Distribuições", href: "/dashboard/investidores/distribuicoes" },

@@ -462,14 +462,7 @@ export default function PayrollDetailPage() {
 
               {payroll.status !== 'DRAFT' && (
                 <>
-                  <Button
-                    variant="outline"
-                    onClick={handleExportPDF}
-                    disabled={processing}
-                  >
-                    <FileText className="mr-2 h-4 w-4" />
-                    Exportar PDF
-                  </Button>
+                 
 
                   <Button
                     variant="outline"
@@ -515,7 +508,7 @@ export default function PayrollDetailPage() {
                       <TableHead className="text-right">Proventos</TableHead>
                       <TableHead className="text-right">Descontos</TableHead>
                       <TableHead className="text-right">Líquido</TableHead>
-                      <TableHead className="text-center">Ações</TableHead>
+                     
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -544,28 +537,7 @@ export default function PayrollDetailPage() {
                         <TableCell className="text-right font-semibold">
                           {formatCurrency(item.netAmount)}
                         </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleGeneratePayslip(item.employeeId, item.employee.name)}
-                              disabled={exportingPayslip === item.employeeId}
-                            >
-                              <FileText className="h-4 w-4" />
-                            </Button>
-                            
-                            {payroll.status === 'DRAFT' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => openDeleteItemDialog(item.id, item.employee.name)}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
+                        
                       </TableRow>
                     ))}
                   </TableBody>

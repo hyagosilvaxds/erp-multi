@@ -173,7 +173,10 @@ export async function createLegalDocument(data: CreateLegalDocumentDto): Promise
     if (data.categoryId) formData.append('categoryId', data.categoryId)
     if (data.description) formData.append('description', data.description)
     if (data.reference) formData.append('reference', data.reference)
-    if (data.parties) formData.append('parties', JSON.stringify(data.parties))
+    
+    // Parties deve sempre ser enviado, mesmo que vazio
+    formData.append('parties', JSON.stringify(data.parties || []))
+    
     if (data.startDate) formData.append('startDate', data.startDate)
     if (data.endDate) formData.append('endDate', data.endDate)
     if (data.dueDate) formData.append('dueDate', data.dueDate)
@@ -181,7 +184,10 @@ export async function createLegalDocument(data: CreateLegalDocumentDto): Promise
     if (data.value !== undefined) formData.append('value', data.value.toString())
     if (data.currency) formData.append('currency', data.currency)
     if (data.notes) formData.append('notes', data.notes)
-    if (data.tags) formData.append('tags', data.tags.join(','))
+    
+    // Tags deve sempre ser enviado como array JSON stringificado
+    formData.append('tags', JSON.stringify(data.tags || []))
+    
     if (data.alertDays !== undefined) formData.append('alertDays', data.alertDays.toString())
     if (data.documentName) formData.append('documentName', data.documentName)
     if (data.documentDescription) formData.append('documentDescription', data.documentDescription)

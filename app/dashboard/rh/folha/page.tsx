@@ -494,15 +494,7 @@ export default function FolhaPagamentoPage() {
                             )}
                             {(payroll.status === 'CALCULATED' || payroll.status === 'APPROVED' || payroll.status === 'PAID') && (
                               <>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleExportPDF(payroll.id, payrollName)}
-                                  disabled={exportingId === payroll.id}
-                                  title="Exportar PDF"
-                                >
-                                  <FileText className="h-4 w-4" />
-                                </Button>
+                                
                                 <Button
                                   variant="ghost"
                                   size="icon"

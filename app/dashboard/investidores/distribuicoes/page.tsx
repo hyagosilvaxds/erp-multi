@@ -1,11 +1,33 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Search, Plus, Download, FileText, Calendar, DollarSign, TrendingUp } from "lucide-react"
+import {
+  Search,
+  Plus,
+  DollarSign,
+  TrendingUp,
+  AlertCircle,
+  Loader2,
+  Edit,
+  Trash2,
+  Eye,
+  Calendar,
+  Zap,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react"
 import Link from "next/link"
 import {
   Table,
@@ -15,102 +37,205 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-
-// Dados mockados
-const distribuicoes = [
-  {
-    id: 1,
-    periodo: "Q1 2025",
-    data: "2025-03-31",
-    projeto: "Projeto Alpha",
-    valorTotal: 150000,
-    investidores: 3,
-    status: "pago",
-  },
-  {
-    id: 2,
-    periodo: "Fevereiro/2025",
-    data: "2025-02-28",
-    projeto: "Projeto Beta",
-    valorTotal: 85000,
-    investidores: 2,
-    status: "pago",
-  },
-  {
-    id: 3,
-    periodo: "Janeiro/2025",
-    data: "2025-01-31",
-    projeto: "Projeto Beta",
-    valorTotal: 92000,
-    investidores: 2,
-    status: "pago",
-  },
-  {
-    id: 4,
-    periodo: "Março/2025",
-    data: "2025-03-31",
-    projeto: "Projeto Beta",
-    valorTotal: 98000,
-    investidores: 2,
-    status: "processando",
-  },
-  {
-    id: 5,
-    periodo: "Q1 2025",
-    data: "2025-03-31",
-    projeto: "Projeto Gamma",
-    valorTotal: 45000,
-    investidores: 1,
-    status: "pendente",
-  },
-]
-
-const stats = [
-  {
-    title: "Total Distribuído (2025)",
-    value: distribuicoes
-      .filter(d => d.status === "pago")
-      .reduce((acc, dist) => acc + dist.valorTotal, 0)
-      .toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      }),
-    icon: DollarSign,
-    description: `${distribuicoes.filter(d => d.status === "pago").length} distribuições pagas`,
-  },
-  {
-    title: "Em Processamento",
-    value: distribuicoes
-      .filter(d => d.status === "processando")
-      .reduce((acc, dist) => acc + dist.valorTotal, 0)
-      .toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      }),
-    icon: TrendingUp,
-    description: `${distribuicoes.filter(d => d.status === "processando").length} aguardando pagamento`,
-  },
-  {
-    title: "Pendentes",
-    value: distribuicoes
-      .filter(d => d.status === "pendente")
-      .reduce((acc, dist) => acc + dist.valorTotal, 0)
-      .toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      }),
-    icon: Calendar,
-    description: `${distribuicoes.filter(d => d.status === "pendente").length} a processar`,
-  },
-  {
-    title: "Total de Distribuições",
-    value: distribuicoes.length,
-    icon: FileText,
-    description: "Histórico completo",
-  },
-]
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useToast } from "@/hooks/use-toast"
+import { authApi } from "@/lib/api/auth"
+import {
+  distributionsApi,
+  type DistributionStatus,
+  type DistributionListItem,
+} from "@/lib/api/distributions"
 
 export default function DistribuicoesPage() {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [selectedCompany, setSelectedCompany] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [distributions, setDistributions] = useState<DistributionListItem[]>([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<DistributionStatus | "ALL">("ALL")
+
+  // Stats
+  const [stats, setStats] = useState({
+    totalPaid: 0,
+    totalPending: 0,
+    totalCanceled: 0,
+    countTotal: 0,
+  })
+
+  useEffect(() => {
+    loadSelectedCompany()
+  }, [])
+
+  useEffect(() => {
+    if (selectedCompany) {
+      loadDistributions()
+    }
+  }, [selectedCompany, page, statusFilter])
+
+  const loadSelectedCompany = async () => {
+    try {
+      const company = await authApi.getSelectedCompany()
+      setSelectedCompany(company)
+    } catch (error) {
+      console.error("Erro ao carregar empresa:", error)
+    }
+  }
+
+  const loadDistributions = async () => {
+    if (!selectedCompany?.id) return
+
+    try {
+      setLoading(true)
+
+      const params: any = {
+        page,
+        limit: 10,
+      }
+
+      if (statusFilter !== "ALL") {
+        params.status = statusFilter
+      }
+
+      if (search) {
+        params.search = search
+      }
+
+      const response = await distributionsApi.getAll(selectedCompany.id, params)
+
+      setDistributions(response.data)
+      setTotal(response.meta.total)
+      setTotalPages(response.meta.totalPages)
+
+      // Calcular stats
+      calculateStats(response.data)
+    } catch (error: any) {
+      console.error("Erro ao carregar distribuições:", error)
+      toast({
+        title: "Erro ao carregar distribuições",
+        description: error.response?.data?.message || error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const calculateStats = (data: DistributionListItem[]) => {
+    const paid = data.filter(d => d.status === "PAGO")
+    const pending = data.filter(d => d.status === "PENDENTE")
+    const canceled = data.filter(d => d.status === "CANCELADO")
+
+    setStats({
+      totalPaid: paid.reduce((sum, d) => sum + d.netAmount, 0),
+      totalPending: pending.reduce((sum, d) => sum + d.netAmount, 0),
+      totalCanceled: canceled.reduce((sum, d) => sum + d.netAmount, 0),
+      countTotal: data.length,
+    })
+  }
+
+  const handleSearch = () => {
+    setPage(1)
+    loadDistributions()
+  }
+
+  const handleDelete = async (distributionId: string) => {
+    if (!selectedCompany?.id) return
+
+    if (!confirm("Tem certeza que deseja excluir esta distribuição?")) return
+
+    try {
+      await distributionsApi.delete(selectedCompany.id, distributionId)
+
+      toast({
+        title: "Sucesso",
+        description: "Distribuição excluída com sucesso",
+      })
+
+      loadDistributions()
+    } catch (error: any) {
+      console.error("Erro ao excluir distribuição:", error)
+      toast({
+        title: "Erro ao excluir distribuição",
+        description: error.response?.data?.message || error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleMarkAsPaid = async (distributionId: string) => {
+    if (!selectedCompany?.id) return
+
+    if (!confirm("Tem certeza que deseja marcar esta distribuição como PAGA?")) return
+
+    try {
+      await distributionsApi.markAsPaid(selectedCompany.id, distributionId)
+
+      toast({
+        title: "Sucesso",
+        description: "Distribuição marcada como PAGA com sucesso",
+      })
+
+      loadDistributions()
+    } catch (error: any) {
+      console.error("Erro ao marcar distribuição como paga:", error)
+      toast({
+        title: "Erro ao marcar como paga",
+        description: error.response?.data?.message || error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleMarkAsCanceled = async (distributionId: string) => {
+    if (!selectedCompany?.id) return
+
+    if (!confirm("Tem certeza que deseja CANCELAR esta distribuição?")) return
+
+    try {
+      await distributionsApi.markAsCanceled(selectedCompany.id, distributionId)
+
+      toast({
+        title: "Sucesso",
+        description: "Distribuição cancelada com sucesso",
+      })
+
+      loadDistributions()
+    } catch (error: any) {
+      console.error("Erro ao cancelar distribuição:", error)
+      toast({
+        title: "Erro ao cancelar distribuição",
+        description: error.response?.data?.message || error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (!selectedCompany) {
+    return (
+      <DashboardLayout userRole="company">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold">Nenhuma empresa selecionada</h3>
+            <p className="text-sm text-muted-foreground">
+              Selecione uma empresa para continuar
+            </p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   return (
     <DashboardLayout userRole="company">
       <div className="space-y-6">
@@ -118,131 +243,344 @@ export default function DistribuicoesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              Distribuições de Rendimentos
+              Distribuições
             </h1>
-            <p className="text-muted-foreground">Histórico e gestão de distribuições aos investidores</p>
+            <p className="text-muted-foreground">
+              Gerenciamento de distribuições de lucros
+            </p>
           </div>
-          <Button asChild>
-            <Link href="/dashboard/investidores/distribuicoes/nova">
-              <Plus className="mr-2 h-4 w-4" />
-              Nova Distribuição
+          <div className="flex gap-2">
+            <Link href="/dashboard/investidores/distribuicoes/automatica">
+              <Button variant="outline">
+                <Zap className="mr-2 h-4 w-4" />
+                Distribuição Automática
+              </Button>
             </Link>
-          </Button>
+            <Link href="/dashboard/investidores/distribuicoes/nova">
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Nova Distribuição
+              </Button>
+            </Link>
+          </div>
         </div>
 
-        {/* Stats Grid */}
+        {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat) => {
-            const Icon = stat.icon
-            return (
-              <Card key={stat.title}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-foreground">{stat.value}</div>
-                  <p className="text-xs text-muted-foreground">{stat.description}</p>
-                </CardContent>
-              </Card>
-            )
-          })}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Total de Distribuições
+              </CardTitle>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.countTotal}</div>
+              <p className="text-xs text-muted-foreground">
+                Distribuições registradas
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Valor Pago</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {distributionsApi.helpers.formatCurrency(stats.totalPaid)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Distribuições pagas (líquido)
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Valor Pendente</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {distributionsApi.helpers.formatCurrency(stats.totalPending)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Aguardando pagamento (líquido)
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Valor Cancelado</CardTitle>
+              <AlertCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {distributionsApi.helpers.formatCurrency(stats.totalCanceled)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Distribuições canceladas
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Distribuições Table */}
+        {/* Filters */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Histórico de Distribuições</CardTitle>
-                <CardDescription>Todas as distribuições realizadas e pendentes</CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm">
-                  <Download className="mr-2 h-4 w-4" />
-                  Exportar
-                </Button>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Buscar distribuição..." className="pl-8 w-[250px]" />
-                </div>
-              </div>
-            </div>
+            <CardTitle>Filtros</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Período</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Projeto</TableHead>
-                  <TableHead className="text-right">Valor Total</TableHead>
-                  <TableHead className="text-center">Investidores</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {distribuicoes.map((dist) => (
-                  <TableRow key={dist.id}>
-                    <TableCell className="font-medium">{dist.periodo}</TableCell>
-                    <TableCell>{new Date(dist.data).toLocaleDateString("pt-BR")}</TableCell>
-                    <TableCell className="text-muted-foreground">{dist.projeto}</TableCell>
-                    <TableCell className="text-right font-semibold text-green-600">
-                      {dist.valorTotal.toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      })}
-                    </TableCell>
-                    <TableCell className="text-center">{dist.investidores}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          dist.status === "pago"
-                            ? "default"
-                            : dist.status === "processando"
-                            ? "secondary"
-                            : "outline"
-                        }
-                      >
-                        {dist.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex gap-1 justify-end">
-                        <Button asChild variant="ghost" size="sm">
-                          <Link href={`/dashboard/investidores/distribuicoes/${dist.id}`}>
-                            Ver Detalhes
-                          </Link>
-                        </Button>
-                        {dist.status === "pago" && (
-                          <Button variant="ghost" size="sm">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <Input
+                  placeholder="Buscar por investidor ou projeto..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      handleSearch()
+                    }
+                  }}
+                />
+              </div>
+              <Select
+                value={statusFilter}
+                onValueChange={value =>
+                  setStatusFilter(value as DistributionStatus | "ALL")
+                }
+              >
+                <SelectTrigger className="w-full md:w-[200px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos os status</SelectItem>
+                  <SelectItem value="PAGO">Pago</SelectItem>
+                  <SelectItem value="PENDENTE">Pendente</SelectItem>
+                  <SelectItem value="CANCELADO">Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={handleSearch} variant="secondary">
+                <Search className="mr-2 h-4 w-4" />
+                Buscar
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Info Card */}
-        <Card className="border-primary/20 bg-primary/5">
+        {/* Table */}
+        <Card>
           <CardHeader>
-            <div className="flex gap-3">
-              <FileText className="h-5 w-5 text-primary" />
-              <div>
-                <CardTitle className="text-base">Gerar Informes de Rendimentos</CardTitle>
-                <CardDescription className="mt-2">
-                  Para cada distribuição paga, você pode gerar recibos individuais e informes de rendimentos em
-                  PDF com o logo da empresa. Acesse os detalhes da distribuição para baixar os documentos.
-                </CardDescription>
-              </div>
-            </div>
+            <CardTitle>Distribuições Registradas</CardTitle>
+            <CardDescription>
+              {total} distribuição{total !== 1 ? "ões" : ""} encontrada
+              {total !== 1 ? "s" : ""}
+            </CardDescription>
           </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : distributions.length === 0 ? (
+              <div className="text-center py-8">
+                <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold">
+                  Nenhuma distribuição encontrada
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Crie sua primeira distribuição para começar
+                </p>
+                <div className="flex justify-center gap-2 mt-4">
+                  <Link href="/dashboard/investidores/distribuicoes/automatica">
+                    <Button variant="outline">
+                      <Zap className="mr-2 h-4 w-4" />
+                      Distribuição Automática
+                    </Button>
+                  </Link>
+                  <Link href="/dashboard/investidores/distribuicoes/nova">
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Nova Distribuição
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Investidor</TableHead>
+                      <TableHead>Projeto</TableHead>
+                      <TableHead>Competência</TableHead>
+                      <TableHead>Percentual</TableHead>
+                      <TableHead>Valor Bruto</TableHead>
+                      <TableHead>Valor Líquido</TableHead>
+                      <TableHead>Data Dist.</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {distributions.map(distribution => (
+                      <TableRow key={distribution.id}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">
+                              {distributionsApi.helpers.getInvestorName(
+                                distribution.investor
+                              )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {distribution.investor.type === "PESSOA_FISICA"
+                                ? "Pessoa Física"
+                                : "Pessoa Jurídica"}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{distribution.project.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {distribution.project.code}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {distributionsApi.helpers.formatCompetence(
+                            distribution.competenceDate
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {distributionsApi.helpers.formatPercentage(
+                            distribution.percentage
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {distributionsApi.helpers.formatCurrency(
+                            distribution.amount
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium text-green-600">
+                          {distributionsApi.helpers.formatCurrency(
+                            distribution.netAmount
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {distributionsApi.helpers.formatDate(
+                            distribution.distributionDate
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              distribution.status === "PAGO"
+                                ? "default"
+                                : distribution.status === "CANCELADO"
+                                ? "destructive"
+                                : "secondary"
+                            }
+                          >
+                            {distributionsApi.helpers.getStatusLabel(
+                              distribution.status
+                            )}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            {/* Botão Ver */}
+                            <Link
+                              href={`/dashboard/investidores/distribuicoes/${distribution.id}`}
+                            >
+                              <Button variant="ghost" size="icon">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                            
+                            {/* Botão Editar - só se não for PAGO */}
+                            {distribution.status !== "PAGO" && (
+                              <Link
+                                href={`/dashboard/investidores/distribuicoes/${distribution.id}/editar`}
+                              >
+                                <Button variant="ghost" size="icon">
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </Link>
+                            )}
+                            
+                            {/* Botão Marcar como Pago - só se PENDENTE */}
+                            {distribution.status === "PENDENTE" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleMarkAsPaid(distribution.id)}
+                                title="Marcar como Pago"
+                              >
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              </Button>
+                            )}
+                            
+                            {/* Botão Cancelar - só se não for CANCELADO */}
+                            {distribution.status !== "CANCELADO" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleMarkAsCanceled(distribution.id)}
+                                title="Cancelar"
+                              >
+                                <XCircle className="h-4 w-4 text-orange-600" />
+                              </Button>
+                            )}
+                            
+                            {/* Botão Deletar */}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete(distribution.id)}
+                              title="Excluir"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <p className="text-sm text-muted-foreground">
+                      Página {page} de {totalPages}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
         </Card>
       </div>
     </DashboardLayout>

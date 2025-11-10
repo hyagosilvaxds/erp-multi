@@ -158,12 +158,7 @@ export default function DocumentoDetalhesPage() {
               <Download className="mr-2 h-4 w-4" />
               Baixar
             </Button>
-            <Button asChild>
-              <Link href={`/dashboard/juridico/documentos/${document.id}/editar`}>
-                <Edit className="mr-2 h-4 w-4" />
-                Editar
-              </Link>
-            </Button>
+            
           </div>
         </div>
 

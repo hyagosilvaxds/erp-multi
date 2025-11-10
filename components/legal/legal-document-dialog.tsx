@@ -186,9 +186,9 @@ export function LegalDocumentDialog({
           value: formData.value ? parseFloat(formData.value) : undefined,
           currency: formData.currency,
           notes: formData.notes || undefined,
-          tags: formData.tags ? formData.tags.split(",").map((t) => t.trim()) : undefined,
+          tags: formData.tags ? formData.tags.split(",").map((t) => t.trim()).filter(t => t) : [],
           alertDays: parseInt(formData.alertDays),
-          parties: formData.parties.length > 0 ? formData.parties : undefined,
+          parties: formData.parties,
         })
         toast({
           title: "Documento atualizado",
@@ -210,9 +210,9 @@ export function LegalDocumentDialog({
           value: formData.value ? parseFloat(formData.value) : undefined,
           currency: formData.currency,
           notes: formData.notes || undefined,
-          tags: formData.tags ? formData.tags.split(",").map((t) => t.trim()) : [],
+          tags: formData.tags ? formData.tags.split(",").map((t) => t.trim()).filter(t => t) : [],
           alertDays: parseInt(formData.alertDays),
-          parties: formData.parties.length > 0 ? formData.parties : undefined,
+          parties: formData.parties,
           documentName: formData.title,
           documentDescription: formData.description || undefined,
         })
@@ -366,13 +366,12 @@ export function LegalDocumentDialog({
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-2">
-                  <Label htmlFor="categoryId">Categoria</Label>
-                  <Select value={formData.categoryId} onValueChange={(value) => setFormData({ ...formData, categoryId: value })}>
+                  <Label htmlFor="categoryId">Categoria (opcional)</Label>
+                  <Select value={formData.categoryId || undefined} onValueChange={(value) => setFormData({ ...formData, categoryId: value })}>
                     <SelectTrigger id="categoryId">
-                      <SelectValue placeholder="Selecione..." />
+                      <SelectValue placeholder="Selecione uma categoria..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Nenhuma</SelectItem>
                       {categories.map((cat) => (
                         <SelectItem key={cat.id} value={cat.id}>
                           {cat.name}

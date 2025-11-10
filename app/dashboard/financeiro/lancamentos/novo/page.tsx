@@ -10,123 +10,198 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Save, Upload, X, AlertCircle, Lock, Building2 } from "lucide-react"
+import { ArrowLeft, Save, Loader2, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-
-// Configurações do sistema (viriam do backend)
-const VALOR_MINIMO_ANEXO_OBRIGATORIO = 1000 // R$ 1.000,00
-const PERIODO_BLOQUEADO = "2025-03" // Formato YYYY-MM
-const EMPRESA_ATUAL = { id: "1", nome: "Tech Solutions LTDA" } // Mock - viria do contexto
-
-// Regras de obrigatoriedade por conta contábil
-const REGRAS_CONTA_CONTABIL: Record<string, { centroCustoObrigatorio: boolean; projetoObrigatorio: boolean }> = {
-  "3.1.01": { centroCustoObrigatorio: true, projetoObrigatorio: false }, // Despesas Administrativas
-  "3.1.02": { centroCustoObrigatorio: true, projetoObrigatorio: false }, // Energia Elétrica
-  "3.2.01": { centroCustoObrigatorio: true, projetoObrigatorio: true }, // Despesas com Projetos
-}
+import { 
+  financialTransactionsApi, 
+  bankAccountsApi, 
+  financialCategoriesApi,
+  type TransactionType,
+  type CategoryType 
+} from "@/lib/api/financial"
+import { centroCustoApi, planoContasApi, type CentroCusto, type ContaContabil } from "@/lib/api/financial"
+import { authApi } from "@/lib/api/auth"
+import { useToast } from "@/hooks/use-toast"
 
 export default function NovoLancamento() {
   const router = useRouter()
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(false)
+  const [loadingData, setLoadingData] = useState(true)
+  const selectedCompany = authApi.getSelectedCompany()
+
+  // Dados para os selects
+  const [contasBancarias, setContasBancarias] = useState<any[]>([])
+  const [categorias, setCategorias] = useState<any[]>([])
+  const [centrosCusto, setCentrosCusto] = useState<CentroCusto[]>([])
+  const [contasContabeis, setContasContabeis] = useState<ContaContabil[]>([])
+  const [planoContasId, setPlanoContasId] = useState<string>("")
+
   const [formData, setFormData] = useState({
-    empresaId: EMPRESA_ATUAL.id,
-    tipo: "",
-    data: new Date().toISOString().split("T")[0],
-    descricao: "",
-    valor: "",
-    contaContabil: "",
-    centroCusto: "",
-    projeto: "",
-    favorecido: "",
-    formaPagamento: "",
-    observacoes: "",
+    bankAccountId: "",
+    categoryId: "",
+    type: "" as CategoryType | "",
+    transactionType: "" as TransactionType | "",
+    amount: "",
+    fees: "",
+    description: "",
+    referenceNumber: "",
+    documentNumber: "",
+    transactionDate: new Date().toISOString().split("T")[0],
+    competenceDate: new Date().toISOString().split("T")[0],
+    notes: "",
+    centroCustoId: "",
+    contaContabilId: "",
   })
 
-  const [anexos, setAnexos] = useState<File[]>([])
-  const [periodoBloqueado, setPeriodoBloqueado] = useState(false)
-  const [anexoObrigatorio, setAnexoObrigatorio] = useState(false)
-  const [centroCustoObrigatorio, setCentroCustoObrigatorio] = useState(false)
-  const [projetoObrigatorio, setProjetoObrigatorio] = useState(false)
-  const [erros, setErros] = useState<string[]>([])
-
-  // Verifica se o período está bloqueado
   useEffect(() => {
-    const mesAno = formData.data.substring(0, 7) // YYYY-MM
-    setPeriodoBloqueado(mesAno === PERIODO_BLOQUEADO)
-  }, [formData.data])
-
-  // Verifica se anexo é obrigatório baseado no valor
-  useEffect(() => {
-    const valor = parseFloat(formData.valor)
-    setAnexoObrigatorio(!isNaN(valor) && valor >= VALOR_MINIMO_ANEXO_OBRIGATORIO)
-  }, [formData.valor])
-
-  // Verifica obrigatoriedade de centro de custo e projeto baseado na conta contábil
-  useEffect(() => {
-    const regra = REGRAS_CONTA_CONTABIL[formData.contaContabil]
-    if (regra) {
-      setCentroCustoObrigatorio(regra.centroCustoObrigatorio)
-      setProjetoObrigatorio(regra.projetoObrigatorio)
-    } else {
-      setCentroCustoObrigatorio(false)
-      setProjetoObrigatorio(false)
+    if (selectedCompany?.id) {
+      loadInitialData()
     }
-  }, [formData.contaContabil])
+  }, [selectedCompany?.id])
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setAnexos([...anexos, ...Array.from(e.target.files)])
+  const loadInitialData = async () => {
+    try {
+      setLoadingData(true)
+      if (!selectedCompany?.id) return
+
+      // Carregar dados em paralelo
+      const [contasResp, categoriasResp, centrosResp] = await Promise.all([
+        bankAccountsApi.getAll(selectedCompany.id),
+        financialCategoriesApi.getAll(selectedCompany.id),
+        centroCustoApi.getByCompany(selectedCompany.id),
+      ])
+
+      setContasBancarias(contasResp.filter(c => c.active))
+      setCategorias(categoriasResp.filter(c => c.active))
+      setCentrosCusto(centrosResp.filter(c => c.ativo))
+
+      // Buscar plano de contas padrão (já vem com as contas)
+      try {
+        const planoResp = await planoContasApi.getPadrao(selectedCompany.id)
+        setPlanoContasId(planoResp.id)
+        
+        // O endpoint getPadrao já retorna as contas no campo 'contas'
+        if (planoResp.contas && Array.isArray(planoResp.contas)) {
+          const contasValidas = planoResp.contas.filter(c => c.aceitaLancamento && c.ativo)
+          setContasContabeis(contasValidas)
+        }
+      } catch (error) {
+        console.error("Erro ao carregar plano de contas:", error)
+      }
+
+    } catch (error: any) {
+      console.error("Erro ao carregar dados:", error)
+      toast({
+        title: "Erro ao carregar dados",
+        description: error.response?.data?.message || error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingData(false)
     }
   }
 
-  const handleRemoveAnexo = (index: number) => {
-    setAnexos(anexos.filter((_, i) => i !== index))
+  // Atualizar categorias quando mudar o tipo
+  useEffect(() => {
+    if (selectedCompany?.id && formData.type) {
+      loadCategoriasPorTipo(formData.type as CategoryType)
+    }
+  }, [formData.type, selectedCompany?.id])
+
+  const loadCategoriasPorTipo = async (type: CategoryType) => {
+    try {
+      if (!selectedCompany?.id) return
+      const data = await financialCategoriesApi.getAll(selectedCompany.id, type)
+      setCategorias(data.filter(c => c.active))
+    } catch (error) {
+      console.error("Erro ao carregar categorias:", error)
+    }
   }
 
-  const validarFormulario = (): boolean => {
-    const novosErros: string[] = []
-
-    // Validar período bloqueado
-    if (periodoBloqueado) {
-      novosErros.push("O período deste lançamento está bloqueado. Apenas administradores podem desbloquear.")
-    }
-
-    // Validar anexo obrigatório
-    if (anexoObrigatorio && anexos.length === 0) {
-      novosErros.push(
-        `Anexo obrigatório para valores acima de ${VALOR_MINIMO_ANEXO_OBRIGATORIO.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
-      )
-    }
-
-    // Validar centro de custo obrigatório
-    if (centroCustoObrigatorio && !formData.centroCusto) {
-      novosErros.push("Centro de custo é obrigatório para esta conta contábil.")
-    }
-
-    // Validar projeto obrigatório
-    if (projetoObrigatorio && !formData.projeto) {
-      novosErros.push("Projeto é obrigatório para esta conta contábil.")
-    }
-
-    setErros(novosErros)
-    return novosErros.length === 0
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validarFormulario()) {
+    if (!selectedCompany?.id) {
+      toast({
+        title: "Erro",
+        description: "Nenhuma empresa selecionada",
+        variant: "destructive",
+      })
       return
     }
 
-    // Aqui seria feita a chamada à API
-    // A API registraria em logs de auditoria: quem criou, quando, etc.
-    console.log("[v0] Salvando lançamento:", formData, "Anexos:", anexos)
-    console.log("[v0] Auditoria: Usuário XYZ criou lançamento na empresa", EMPRESA_ATUAL.nome, "em", new Date())
+    if (!formData.type || !formData.transactionType) {
+      toast({
+        title: "Erro",
+        description: "Preencha todos os campos obrigatórios",
+        variant: "destructive",
+      })
+      return
+    }
 
-    router.push("/dashboard/financeiro/lancamentos")
+    try {
+      setLoading(true)
+
+      const amount = parseFloat(formData.amount)
+      const fees = parseFloat(formData.fees) || 0
+
+      await financialTransactionsApi.create({
+        companyId: selectedCompany.id,
+        bankAccountId: formData.bankAccountId,
+        categoryId: formData.categoryId,
+        type: formData.type as CategoryType,
+        transactionType: formData.transactionType as TransactionType,
+        amount,
+        fees,
+        description: formData.description,
+        referenceNumber: formData.referenceNumber || undefined,
+        documentNumber: formData.documentNumber || undefined,
+        transactionDate: new Date(formData.transactionDate).toISOString(),
+        competenceDate: new Date(formData.competenceDate).toISOString(),
+        notes: formData.notes || undefined,
+        centroCustoId: formData.centroCustoId || undefined,
+        contaContabilId: formData.contaContabilId || undefined,
+      })
+
+      toast({
+        title: "Sucesso",
+        description: "Lançamento criado com sucesso",
+      })
+
+      router.push("/dashboard/financeiro/lancamentos")
+    } catch (error: any) {
+      console.error("Erro ao criar lançamento:", error)
+      toast({
+        title: "Erro ao criar lançamento",
+        description: error.response?.data?.message || error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const formatAccountType = (type: string) => {
+    const types: Record<string, string> = {
+      CORRENTE: "Conta Corrente",
+      POUPANCA: "Conta Poupança",
+      SALARIO: "Conta Salário",
+    }
+    return types[type] || type
+  }
+
+  if (loadingData) {
+    return (
+      <DashboardLayout userRole="company">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    )
   }
 
   return (
@@ -142,322 +217,286 @@ export default function NovoLancamento() {
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Novo Lançamento</h1>
             <p className="text-muted-foreground">Registre uma nova movimentação financeira</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-muted-foreground" />
-            <span className="text-sm font-medium">{EMPRESA_ATUAL.nome}</span>
-          </div>
         </div>
 
-        {/* Alertas de Validação */}
-        {erros.length > 0 && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Erro de Validação</AlertTitle>
-            <AlertDescription>
-              <ul className="ml-4 list-disc space-y-1">
-                {erros.map((erro, index) => (
-                  <li key={index}>{erro}</li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Alerta de Período Bloqueado */}
-        {periodoBloqueado && (
-          <Alert variant="destructive">
-            <Lock className="h-4 w-4" />
-            <AlertTitle>Período Bloqueado</AlertTitle>
-            <AlertDescription>
-              O período {PERIODO_BLOQUEADO} está bloqueado para edições. Entre em contato com o administrador para
-              desbloquear.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Alerta de Anexo Obrigatório */}
-        {anexoObrigatorio && anexos.length === 0 && (
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Anexo Obrigatório</AlertTitle>
-            <AlertDescription>
-              Lançamentos acima de {VALOR_MINIMO_ANEXO_OBRIGATORIO.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-              requerem pelo menos um anexo (nota fiscal, comprovante, etc.).
-            </AlertDescription>
-          </Alert>
-        )}
-
-      <form onSubmit={handleSubmit}>
-        <div className="space-y-6">
-          {/* Informações Básicas */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Informações Básicas</CardTitle>
-              <CardDescription>Dados principais do lançamento</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="tipo">Tipo *</Label>
-                  <Select value={formData.tipo} onValueChange={(v) => setFormData({ ...formData, tipo: v })} required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="entrada">Entrada (Receita)</SelectItem>
-                      <SelectItem value="saida">Saída (Despesa)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="data">Data * {periodoBloqueado && <Badge variant="destructive" className="ml-2">Bloqueado</Badge>}</Label>
-                  <Input
-                    id="data"
-                    type="date"
-                    value={formData.data}
-                    onChange={(e) => setFormData({ ...formData, data: e.target.value })}
-                    required
-                    disabled={periodoBloqueado}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="descricao">Descrição *</Label>
-                <Input
-                  id="descricao"
-                  placeholder="Ex: Venda de produtos, Pagamento fornecedor..."
-                  value={formData.descricao}
-                  onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="valor">Valor *</Label>
-                <Input
-                  id="valor"
-                  type="number"
-                  step="0.01"
-                  placeholder="0,00"
-                  value={formData.valor}
-                  onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
-                  required
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Classificação Contábil */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Classificação Contábil</CardTitle>
-              <CardDescription>Organize o lançamento por conta, centro de custo e projeto</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="contaContabil">Conta Contábil *</Label>
-                <Select
-                  value={formData.contaContabil}
-                  onValueChange={(v) => setFormData({ ...formData, contaContabil: v })}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1.1.01">1.1.01 - Caixa</SelectItem>
-                    <SelectItem value="1.1.02">1.1.02 - Banco</SelectItem>
-                    <SelectItem value="2.1.01">2.1.01 - Fornecedores</SelectItem>
-                    <SelectItem value="3.1.01">3.1.01 - Despesas Administrativas</SelectItem>
-                    <SelectItem value="3.1.02">3.1.02 - Energia Elétrica</SelectItem>
-                    <SelectItem value="4.1.01">4.1.01 - Receita de Vendas</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="centroCusto">
-                    Centro de Custo {centroCustoObrigatorio && "*"}
-                    {centroCustoObrigatorio && <Badge className="ml-2" variant="secondary">Obrigatório</Badge>}
-                  </Label>
-                  <Select
-                    value={formData.centroCusto}
-                    onValueChange={(v) => setFormData({ ...formData, centroCusto: v })}
-                    required={centroCustoObrigatorio}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="vendas">Vendas</SelectItem>
-                      <SelectItem value="compras">Compras</SelectItem>
-                      <SelectItem value="administrativo">Administrativo</SelectItem>
-                      <SelectItem value="marketing">Marketing</SelectItem>
-                      <SelectItem value="producao">Produção</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="projeto">
-                    Projeto {projetoObrigatorio && "*"}
-                    {projetoObrigatorio && <Badge className="ml-2" variant="secondary">Obrigatório</Badge>}
-                    {!projetoObrigatorio && " (Opcional)"}
-                  </Label>
-                  <Select
-                    value={formData.projeto}
-                    onValueChange={(v) => setFormData({ ...formData, projeto: v })}
-                    required={projetoObrigatorio}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={projetoObrigatorio ? "Selecione" : "Nenhum"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="alpha">Projeto Alpha</SelectItem>
-                      <SelectItem value="beta">Projeto Beta</SelectItem>
-                      <SelectItem value="gamma">Projeto Gamma</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Detalhes do Pagamento */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Detalhes do Pagamento</CardTitle>
-              <CardDescription>Informações sobre favorecido e forma de pagamento</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="favorecido">Favorecido *</Label>
-                <Input
-                  id="favorecido"
-                  placeholder="Nome do cliente, fornecedor ou beneficiário"
-                  value={formData.favorecido}
-                  onChange={(e) => setFormData({ ...formData, favorecido: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="formaPagamento">Forma de Pagamento *</Label>
-                <Select
-                  value={formData.formaPagamento}
-                  onValueChange={(v) => setFormData({ ...formData, formaPagamento: v })}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                    <SelectItem value="pix">PIX</SelectItem>
-                    <SelectItem value="ted">TED</SelectItem>
-                    <SelectItem value="doc">DOC</SelectItem>
-                    <SelectItem value="boleto">Boleto</SelectItem>
-                    <SelectItem value="cartao-credito">Cartão de Crédito</SelectItem>
-                    <SelectItem value="cartao-debito">Cartão de Débito</SelectItem>
-                    <SelectItem value="cheque">Cheque</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="observacoes">Observações</Label>
-                <Textarea
-                  id="observacoes"
-                  placeholder="Informações adicionais sobre o lançamento..."
-                  rows={3}
-                  value={formData.observacoes}
-                  onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Anexos */}
-          <Card className={anexoObrigatorio && anexos.length === 0 ? "border-orange-500" : ""}>
-            <CardHeader>
-              <CardTitle>
-                Anexos {anexoObrigatorio && <Badge variant="destructive" className="ml-2">Obrigatório</Badge>}
-              </CardTitle>
-              <CardDescription>
-                {anexoObrigatorio
-                  ? `Adicione comprovantes (NF, recibo, etc.). Obrigatório para valores acima de ${VALOR_MINIMO_ANEXO_OBRIGATORIO.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
-                  : "Adicione comprovantes, notas fiscais ou documentos relacionados (opcional)"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="anexos">Arquivos {anexoObrigatorio && "*"}</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="anexos"
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
-                    className="cursor-pointer"
-                  />
-                  <Button type="button" variant="outline" size="icon" onClick={() => document.getElementById("anexos")?.click()}>
-                    <Upload className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Formatos aceitos: PDF, JPG, PNG, DOC, XLS (máx. 10MB por arquivo)
-                </p>
-              </div>
-
-              {anexos.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Arquivos Anexados</Label>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-6">
+            {/* Informações Básicas */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Informações Básicas</CardTitle>
+                <CardDescription>Dados principais do lançamento</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    {anexos.map((arquivo, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between rounded-lg border border-border p-3"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{arquivo.type.split("/")[1].toUpperCase()}</Badge>
-                          <span className="text-sm text-foreground">{arquivo.name}</span>
-                          <span className="text-xs text-muted-foreground">({(arquivo.size / 1024).toFixed(2)} KB)</span>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleRemoveAnexo(index)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
+                    <Label htmlFor="type">Tipo *</Label>
+                    <Select 
+                      value={formData.type} 
+                      onValueChange={(v) => setFormData({ ...formData, type: v as CategoryType, categoryId: "" })} 
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="RECEITA">Receita</SelectItem>
+                        <SelectItem value="DESPESA">Despesa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="transactionType">Forma de Pagamento *</Label>
+                    <Select 
+                      value={formData.transactionType} 
+                      onValueChange={(v) => setFormData({ ...formData, transactionType: v as TransactionType })} 
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DINHEIRO">Dinheiro</SelectItem>
+                        <SelectItem value="PIX">PIX</SelectItem>
+                        <SelectItem value="TRANSFERENCIA">Transferência</SelectItem>
+                        <SelectItem value="BOLETO">Boleto</SelectItem>
+                        <SelectItem value="CARTAO_CREDITO">Cartão de Crédito</SelectItem>
+                        <SelectItem value="CARTAO_DEBITO">Cartão de Débito</SelectItem>
+                        <SelectItem value="CHEQUE">Cheque</SelectItem>
+                        <SelectItem value="OUTROS">Outros</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* Botões */}
-          <div className="flex justify-end gap-3">
-            <Link href="/dashboard/financeiro/lancamentos">
-              <Button type="button" variant="outline">
-                Cancelar
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="transactionDate">Data da Transação *</Label>
+                    <Input
+                      id="transactionDate"
+                      type="date"
+                      value={formData.transactionDate}
+                      onChange={(e) => setFormData({ ...formData, transactionDate: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="competenceDate">Data de Competência *</Label>
+                    <Input
+                      id="competenceDate"
+                      type="date"
+                      value={formData.competenceDate}
+                      onChange={(e) => setFormData({ ...formData, competenceDate: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Descrição *</Label>
+                  <Input
+                    id="description"
+                    placeholder="Ex: Venda de produtos, Pagamento fornecedor..."
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Valor *</Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      placeholder="0,00"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="fees">Taxas</Label>
+                    <Input
+                      id="fees"
+                      type="number"
+                      step="0.01"
+                      placeholder="0,00"
+                      value={formData.fees}
+                      onChange={(e) => setFormData({ ...formData, fees: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Valor líquido: {(parseFloat(formData.amount) - parseFloat(formData.fees || "0")).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="referenceNumber">Nº Referência</Label>
+                    <Input
+                      id="referenceNumber"
+                      placeholder="Ex: REF123"
+                      value={formData.referenceNumber}
+                      onChange={(e) => setFormData({ ...formData, referenceNumber: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="documentNumber">Nº Documento</Label>
+                    <Input
+                      id="documentNumber"
+                      placeholder="Ex: NF-001"
+                      value={formData.documentNumber}
+                      onChange={(e) => setFormData({ ...formData, documentNumber: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Classificação */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Classificação</CardTitle>
+                <CardDescription>Vincule a contas e categorias</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bankAccountId">Conta Bancária *</Label>
+                  <Select 
+                    value={formData.bankAccountId} 
+                    onValueChange={(v) => setFormData({ ...formData, bankAccountId: v })} 
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a conta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contasBancarias.map((conta) => (
+                        <SelectItem key={conta.id} value={conta.id}>
+                          {conta.bankName} - {conta.accountName} ({formatAccountType(conta.accountType)})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="categoryId">Categoria Financeira *</Label>
+                  <Select 
+                    value={formData.categoryId} 
+                    onValueChange={(v) => setFormData({ ...formData, categoryId: v })} 
+                    required
+                    disabled={!formData.type}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={formData.type ? "Selecione a categoria" : "Selecione primeiro o tipo"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categorias.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          <div className="flex items-center gap-2">
+                            {cat.color && (
+                              <div 
+                                className="w-3 h-3 rounded-full" 
+                                style={{ backgroundColor: cat.color }}
+                              />
+                            )}
+                            {cat.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="contaContabilId">Conta Contábil</Label>
+                  <Select 
+                    value={formData.contaContabilId || undefined} 
+                    onValueChange={(v) => setFormData({ ...formData, contaContabilId: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contasContabeis.map((conta) => (
+                        <SelectItem key={conta.id} value={conta.id}>
+                          {conta.codigo} - {conta.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="centroCustoId">Centro de Custo</Label>
+                  <Select 
+                    value={formData.centroCustoId || undefined} 
+                    onValueChange={(v) => setFormData({ ...formData, centroCustoId: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {centrosCusto.map((centro) => (
+                        <SelectItem key={centro.id} value={centro.id}>
+                          {centro.codigo} - {centro.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Observações */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Informações Adicionais</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Observações</Label>
+                  <Textarea
+                    id="notes"
+                    placeholder="Informações adicionais sobre este lançamento..."
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    rows={4}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Botões */}
+            <div className="flex justify-end gap-3">
+              <Link href="/dashboard/financeiro/lancamentos">
+                <Button type="button" variant="outline" disabled={loading}>
+                  Cancelar
+                </Button>
+              </Link>
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Salvar Lançamento
+                  </>
+                )}
               </Button>
-            </Link>
-            <Button type="submit">
-              <Save className="mr-2 h-4 w-4" />
-              Salvar Lançamento
-            </Button>
+            </div>
           </div>
-        </div>
-      </form>
+        </form>
       </div>
     </DashboardLayout>
   )

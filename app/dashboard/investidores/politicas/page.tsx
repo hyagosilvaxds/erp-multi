@@ -1,12 +1,32 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Settings, Plus, Edit, Trash2, Check } from "lucide-react"
+import {
+  Search,
+  Plus,
+  Percent,
+  Users,
+  AlertCircle,
+  Loader2,
+  Edit,
+  Trash2,
+  Eye,
+  CheckCircle,
+  XCircle,
+} from "lucide-react"
+import Link from "next/link"
 import {
   Table,
   TableBody,
@@ -16,61 +36,161 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-
-// Dados mockados
-const politicas = [
-  {
-    id: 1,
-    projeto: "Projeto Alpha",
-    descricao: "Distribuição trimestral de lucros",
-    distribuicoes: [
-      { investidor: "João Silva Investimentos", percentual: 35 },
-      { investidor: "Maria Oliveira", percentual: 25 },
-      { investidor: "ABC Capital Ltda", percentual: 40 },
-    ],
-    status: "ativa",
-    periodicidade: "Trimestral",
-  },
-  {
-    id: 2,
-    projeto: "Projeto Beta",
-    descricao: "Distribuição mensal de rendimentos",
-    distribuicoes: [
-      { investidor: "ABC Capital Ltda", percentual: 60 },
-      { investidor: "XYZ Participações S.A.", percentual: 40 },
-    ],
-    status: "ativa",
-    periodicidade: "Mensal",
-  },
-  {
-    id: 3,
-    projeto: "Projeto Gamma",
-    descricao: "Distribuição semestral",
-    distribuicoes: [
-      { investidor: "XYZ Participações S.A.", percentual: 100 },
-    ],
-    status: "inativa",
-    periodicidade: "Semestral",
-  },
-]
+import { useToast } from "@/hooks/use-toast"
+import { authApi } from "@/lib/api/auth"
+import {
+  distributionPoliciesApi,
+  type DistributionPolicyListItem,
+} from "@/lib/api/distribution-policies"
 
 export default function PoliticasPage() {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [selectedCompany, setSelectedCompany] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [policies, setPolicies] = useState<DistributionPolicyListItem[]>([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [search, setSearch] = useState("")
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "true" | "false">("ALL")
+
+  // Stats
+  const [stats, setStats] = useState({
+    totalPolicies: 0,
+    activePolicies: 0,
+    inactivePolicies: 0,
+    avgPercentage: 0,
+  })
+
+  useEffect(() => {
+    loadSelectedCompany()
+  }, [])
+
+  useEffect(() => {
+    if (selectedCompany) {
+      loadPolicies()
+    }
+  }, [selectedCompany, page, activeFilter])
+
+  const loadSelectedCompany = async () => {
+    try {
+      const company = await authApi.getSelectedCompany()
+      setSelectedCompany(company)
+    } catch (error) {
+      console.error("Erro ao carregar empresa:", error)
+    }
+  }
+
+  const loadPolicies = async () => {
+    if (!selectedCompany?.id) return
+
+    try {
+      setLoading(true)
+
+      const params: any = {
+        page,
+        limit: 10,
+      }
+
+      if (activeFilter !== "ALL") {
+        params.active = activeFilter === "true"
+      }
+
+      if (search) {
+        params.search = search
+      }
+
+      const response = await distributionPoliciesApi.getAll(
+        selectedCompany.id,
+        params
+      )
+
+      setPolicies(response.data)
+      setTotal(response.meta.total)
+      setTotalPages(response.meta.totalPages)
+
+      // Calcular stats
+      calculateStats(response.data)
+    } catch (error: any) {
+      console.error("Erro ao carregar políticas:", error)
+      toast({
+        title: "Erro ao carregar políticas",
+        description: error.response?.data?.message || error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const calculateStats = (data: DistributionPolicyListItem[]) => {
+    const active = data.filter(p => p.active)
+    const inactive = data.filter(p => !p.active)
+    const avgPercentage =
+      data.length > 0
+        ? data.reduce((sum, p) => sum + p.percentage, 0) / data.length
+        : 0
+
+    setStats({
+      totalPolicies: data.length,
+      activePolicies: active.length,
+      inactivePolicies: inactive.length,
+      avgPercentage,
+    })
+  }
+
+  const handleSearch = () => {
+    setPage(1)
+    loadPolicies()
+  }
+
+  const handleDelete = async (policyId: string) => {
+    if (!selectedCompany?.id) return
+
+    if (!confirm("Tem certeza que deseja excluir esta política?")) return
+
+    try {
+      await distributionPoliciesApi.delete(selectedCompany.id, policyId)
+
+      toast({
+        title: "Sucesso",
+        description: "Política excluída com sucesso",
+      })
+
+      loadPolicies()
+    } catch (error: any) {
+      console.error("Erro ao excluir política:", error)
+      toast({
+        title: "Erro ao excluir política",
+        description: error.response?.data?.message || error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (!selectedCompany) {
+    return (
+      <DashboardLayout userRole="company">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold">Nenhuma empresa selecionada</h3>
+            <p className="text-sm text-muted-foreground">
+              Selecione uma empresa para continuar
+            </p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   return (
     <DashboardLayout userRole="company">
       <div className="space-y-6">
@@ -80,206 +200,279 @@ export default function PoliticasPage() {
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               Políticas de Distribuição
             </h1>
-            <p className="text-muted-foreground">Configure o percentual de distribuição por investidor</p>
+            <p className="text-muted-foreground">
+              Gerenciamento de percentuais de distribuição por projeto
+            </p>
           </div>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Nova Política
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Nova Política de Distribuição</DialogTitle>
-                <DialogDescription>Defina os percentuais de distribuição por investidor</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="projeto">Projeto/Empresa</Label>
-                    <Select>
-                      <SelectTrigger id="projeto">
-                        <SelectValue placeholder="Selecione o projeto" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">Projeto Alpha</SelectItem>
-                        <SelectItem value="2">Projeto Beta</SelectItem>
-                        <SelectItem value="3">Projeto Gamma</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="periodicidade">Periodicidade</Label>
-                    <Select>
-                      <SelectTrigger id="periodicidade">
-                        <SelectValue placeholder="Selecione" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="mensal">Mensal</SelectItem>
-                        <SelectItem value="bimestral">Bimestral</SelectItem>
-                        <SelectItem value="trimestral">Trimestral</SelectItem>
-                        <SelectItem value="semestral">Semestral</SelectItem>
-                        <SelectItem value="anual">Anual</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="descricao">Descrição</Label>
-                  <Textarea
-                    id="descricao"
-                    placeholder="Descreva a política de distribuição..."
-                    className="min-h-[60px]"
-                  />
-                </div>
-
-                <div className="border-t pt-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <Label className="text-base">Distribuição por Investidor</Label>
-                    <Button size="sm" variant="outline">
-                      <Plus className="mr-1 h-3 w-3" />
-                      Adicionar Investidor
-                    </Button>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Card>
-                      <CardContent className="pt-4">
-                        <div className="grid gap-4 md:grid-cols-3">
-                          <div className="md:col-span-2 space-y-2">
-                            <Label>Investidor</Label>
-                            <Select>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecione o investidor" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="1">João Silva Investimentos</SelectItem>
-                                <SelectItem value="2">ABC Capital Ltda</SelectItem>
-                                <SelectItem value="3">Maria Oliveira</SelectItem>
-                                <SelectItem value="4">XYZ Participações S.A.</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Percentual (%)</Label>
-                            <div className="flex gap-2">
-                              <Input type="number" placeholder="0" min="0" max="100" />
-                              <Button variant="ghost" size="icon">
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                      <span className="text-sm font-medium">Total Distribuído:</span>
-                      <span className="text-lg font-bold">0%</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      O total deve somar 100% para ativar a política
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline">Cancelar</Button>
-                <Button>Salvar Política</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Link href="/dashboard/investidores/politicas/nova">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Nova Política
+            </Button>
+          </Link>
         </div>
 
-        {/* Políticas List */}
-        {politicas.map((politica) => (
-          <Card key={politica.id}>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <CardTitle>{politica.projeto}</CardTitle>
-                    <Badge variant={politica.status === "ativa" ? "default" : "secondary"}>
-                      {politica.status}
-                    </Badge>
-                    <Badge variant="outline">{politica.periodicidade}</Badge>
-                  </div>
-                  <CardDescription>{politica.descricao}</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon">
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon">
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </div>
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Total de Políticas
+              </CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Investidor</TableHead>
-                    <TableHead className="text-right">Percentual</TableHead>
-                    <TableHead className="text-right">Representação</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {politica.distribuicoes.map((dist, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{dist.investidor}</TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-semibold text-primary">{dist.percentual}%</span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-primary"
-                              style={{ width: `${dist.percentual}%` }}
-                            />
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="bg-muted/50 font-semibold">
-                    <TableCell>TOTAL</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <span className="text-primary">
-                          {politica.distribuicoes.reduce((acc, d) => acc + d.percentual, 0)}%
-                        </span>
-                        {politica.distribuicoes.reduce((acc, d) => acc + d.percentual, 0) === 100 && (
-                          <Check className="h-4 w-4 text-green-600" />
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell />
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <div className="text-2xl font-bold">{stats.totalPolicies}</div>
+              <p className="text-xs text-muted-foreground">
+                Políticas cadastradas
+              </p>
             </CardContent>
           </Card>
-        ))}
 
-        {/* Info Card */}
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader>
-            <div className="flex gap-3">
-              <Settings className="h-5 w-5 text-primary" />
-              <div>
-                <CardTitle className="text-base">Como funciona?</CardTitle>
-                <CardDescription className="mt-2">
-                  As políticas de distribuição definem automaticamente como os rendimentos serão divididos entre
-                  os investidores. Ao criar uma nova distribuição, o sistema calculará os valores
-                  proporcionalmente conforme configurado aqui.
-                </CardDescription>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Políticas Ativas
+              </CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.activePolicies}</div>
+              <p className="text-xs text-muted-foreground">
+                Em vigor atualmente
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Políticas Inativas
+              </CardTitle>
+              <XCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.inactivePolicies}</div>
+              <p className="text-xs text-muted-foreground">
+                Desativadas ou encerradas
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Percentual Médio
+              </CardTitle>
+              <Percent className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {distributionPoliciesApi.helpers.formatPercentage(
+                  stats.avgPercentage
+                )}
               </div>
-            </div>
+              <p className="text-xs text-muted-foreground">
+                Média por política
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Filters */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Filtros</CardTitle>
           </CardHeader>
+          <CardContent>
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <Input
+                  placeholder="Buscar por investidor ou projeto..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      handleSearch()
+                    }
+                  }}
+                />
+              </div>
+              <Select
+                value={activeFilter}
+                onValueChange={value =>
+                  setActiveFilter(value as "ALL" | "true" | "false")
+                }
+              >
+                <SelectTrigger className="w-full md:w-[200px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todas</SelectItem>
+                  <SelectItem value="true">Ativas</SelectItem>
+                  <SelectItem value="false">Inativas</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={handleSearch} variant="secondary">
+                <Search className="mr-2 h-4 w-4" />
+                Buscar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Políticas Cadastradas</CardTitle>
+            <CardDescription>
+              {total} política{total !== 1 ? "s" : ""} encontrada
+              {total !== 1 ? "s" : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : policies.length === 0 ? (
+              <div className="text-center py-8">
+                <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold">Nenhuma política encontrada</h3>
+                <p className="text-sm text-muted-foreground">
+                  Crie sua primeira política para começar
+                </p>
+                <Link href="/dashboard/investidores/politicas/nova">
+                  <Button className="mt-4">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Nova Política
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Projeto</TableHead>
+                      <TableHead>Investidor</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Percentual</TableHead>
+                      <TableHead>Início</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {policies.map(policy => (
+                      <TableRow key={policy.id}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{policy.project.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {policy.project.code}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">
+                              {distributionPoliciesApi.helpers.getInvestorName(
+                                policy.investor
+                              )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {policy.investor.type === "PESSOA_FISICA"
+                                ? "Pessoa Física"
+                                : "Pessoa Jurídica"}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {distributionPoliciesApi.helpers.getTypeLabel(
+                            policy.type
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {distributionPoliciesApi.helpers.formatPercentage(
+                            policy.percentage
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {distributionPoliciesApi.helpers.formatDate(
+                            policy.startDate
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              policy.active ? "default" : "secondary"
+                            }
+                          >
+                            {distributionPoliciesApi.helpers.getActiveLabel(
+                              policy.active
+                            )}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Link
+                              href={`/dashboard/investidores/politicas/${policy.id}`}
+                            >
+                              <Button variant="ghost" size="icon">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                            <Link
+                              href={`/dashboard/investidores/politicas/${policy.id}/editar`}
+                            >
+                              <Button variant="ghost" size="icon">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete(policy.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <p className="text-sm text-muted-foreground">
+                      Página {page} de {totalPages}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
         </Card>
       </div>
     </DashboardLayout>
