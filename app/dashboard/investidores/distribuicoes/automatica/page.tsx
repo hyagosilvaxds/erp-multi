@@ -66,6 +66,8 @@ export default function DistribuicaoAutomaticaPage() {
     competenceDate: "",
     distributionDate: "",
     description: "",
+    irrf: "",
+    otherDeductions: "",
   })
 
   const [preview, setPreview] = useState<PreviewItem[]>([])
@@ -88,7 +90,7 @@ export default function DistribuicaoAutomaticaPage() {
       setPreview([])
       setTotalPercentage(0)
     }
-  }, [formData.projectId, formData.baseAmount])
+  }, [formData.projectId, formData.baseAmount, formData.irrf, formData.otherDeductions])
 
   const loadSelectedCompany = async () => {
     try {
@@ -145,19 +147,25 @@ export default function DistribuicaoAutomaticaPage() {
         { baseValue: baseAmount }
       )
 
+      // Calcular IRRF e outras deduções baseado nos valores configurados
+      const irrfRate = parseFloat(formData.irrf) || 0
+      const otherDeductionsValue = parseFloat(formData.otherDeductions) || 0
+
       setPreview(
-        result.map(d => ({
-          investorId: d.investorId,
-          investorName: d.investorName,
-          percentage: d.percentage,
-          amount: d.amount,
-          netAmount: distributionsApi.helpers.calculateNetAmount(
-            d.amount,
-            distributionsApi.helpers.calculateIRRF(d.amount),
-            0
-          ),
-          irrf: distributionsApi.helpers.calculateIRRF(d.amount),
-        }))
+        result.map(d => {
+          const amount = d.amount
+          const irrf = irrfRate > 0 ? (amount * irrfRate) / 100 : 0
+          const netAmount = amount - irrf - otherDeductionsValue
+
+          return {
+            investorId: d.investorId,
+            investorName: d.investorName,
+            percentage: d.percentage,
+            amount: amount,
+            irrf: irrf,
+            netAmount: netAmount,
+          }
+        })
       )
       
       // Calcular soma dos percentuais
@@ -240,13 +248,30 @@ export default function DistribuicaoAutomaticaPage() {
     try {
       setLoading(true)
 
-      // Usar o endpoint bulk-create automático (baseado em políticas)
-      const result = await distributionsApi.bulkCreateAutomatic(selectedCompany.id, {
+      // Converter competenceDate de YYYY-MM para YYYY-MM-DD (ISO 8601)
+      const competenceDate = formData.competenceDate.includes('-') && formData.competenceDate.length === 7
+        ? `${formData.competenceDate}-01` // Adiciona dia 01 se formato for YYYY-MM
+        : formData.competenceDate
+
+      // Modo Automático: Usa políticas ativas
+      const payload: any = {
         projectId: formData.projectId,
         baseValue: parseFloat(formData.baseAmount),
-        competenceDate: formData.competenceDate,
+        competenceDate: competenceDate,
         distributionDate: formData.distributionDate,
-      })
+      }
+
+      // Adiciona IRRF se fornecido (em percentual)
+      if (formData.irrf && parseFloat(formData.irrf) > 0) {
+        payload.irrf = parseFloat(formData.irrf)
+      }
+
+      // Adiciona outras deduções se fornecido (valor fixo)
+      if (formData.otherDeductions && parseFloat(formData.otherDeductions) > 0) {
+        payload.otherDeductions = parseFloat(formData.otherDeductions)
+      }
+
+      const result = await distributionsApi.bulkCreateAutomatic(selectedCompany.id, payload)
 
       toast({
         title: "Sucesso",
@@ -399,6 +424,46 @@ export default function DistribuicaoAutomaticaPage() {
                 </p>
               </div>
 
+              {/* Deduções */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="irrf">IRRF (%)</Label>
+                  <Input
+                    id="irrf"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    placeholder="0,00"
+                    value={formData.irrf}
+                    onChange={e =>
+                      setFormData({ ...formData, irrf: e.target.value })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Alíquota de Imposto de Renda em percentual (ex: 15 = 15%)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="otherDeductions">Outras Deduções (R$)</Label>
+                  <Input
+                    id="otherDeductions"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0,00"
+                    value={formData.otherDeductions}
+                    onChange={e =>
+                      setFormData({ ...formData, otherDeductions: e.target.value })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Valor fixo deduzido de cada distribuição (ex: 50 = R$ 50,00)
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="description">Descrição (Opcional)</Label>
                 <Input
@@ -462,33 +527,41 @@ export default function DistribuicaoAutomaticaPage() {
                           <TableHead>Percentual</TableHead>
                           <TableHead>Valor Bruto</TableHead>
                           <TableHead>IRRF</TableHead>
+                          <TableHead>Outras Deduções</TableHead>
                           <TableHead>Valor Líquido</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {preview.map(item => (
-                          <TableRow key={item.investorId}>
-                            <TableCell className="font-medium">
-                              {item.investorName}
-                            </TableCell>
-                            <TableCell>
-                              {distributionsApi.helpers.formatPercentage(
-                                item.percentage
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {distributionsApi.helpers.formatCurrency(item.amount)}
-                            </TableCell>
-                            <TableCell>
-                              {distributionsApi.helpers.formatCurrency(item.irrf)}
-                            </TableCell>
-                            <TableCell className="font-medium text-green-600">
-                              {distributionsApi.helpers.formatCurrency(
-                                item.netAmount
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {preview.map(item => {
+                          const otherDeductionsValue = parseFloat(formData.otherDeductions) || 0
+                          
+                          return (
+                            <TableRow key={item.investorId}>
+                              <TableCell className="font-medium">
+                                {item.investorName}
+                              </TableCell>
+                              <TableCell>
+                                {distributionsApi.helpers.formatPercentage(
+                                  item.percentage
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {distributionsApi.helpers.formatCurrency(item.amount)}
+                              </TableCell>
+                              <TableCell>
+                                {distributionsApi.helpers.formatCurrency(item.irrf)}
+                              </TableCell>
+                              <TableCell>
+                                {distributionsApi.helpers.formatCurrency(otherDeductionsValue)}
+                              </TableCell>
+                              <TableCell className="font-medium text-green-600">
+                                {distributionsApi.helpers.formatCurrency(
+                                  item.netAmount
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
                         <TableRow>
                           <TableCell className="font-bold">TOTAL</TableCell>
                           <TableCell className="font-bold">
@@ -502,6 +575,11 @@ export default function DistribuicaoAutomaticaPage() {
                           <TableCell className="font-bold">
                             {distributionsApi.helpers.formatCurrency(
                               preview.reduce((sum, item) => sum + item.irrf, 0)
+                            )}
+                          </TableCell>
+                          <TableCell className="font-bold">
+                            {distributionsApi.helpers.formatCurrency(
+                              (parseFloat(formData.otherDeductions) || 0) * preview.length
                             )}
                           </TableCell>
                           <TableCell className="font-bold text-green-600">

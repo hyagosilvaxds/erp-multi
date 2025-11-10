@@ -91,6 +91,7 @@ const companyMenuItems = [
       { icon: DollarSign, label: "Aportes", href: "/dashboard/investidores/aportes" },
       { icon: PieChart, label: "Políticas", href: "/dashboard/investidores/politicas" },
       { icon: TrendingUp, label: "Distribuições", href: "/dashboard/investidores/distribuicoes" },
+      { icon: FileSpreadsheet, label: "Relatórios", href: "/dashboard/investidores/relatorios" },
     ],
   },
   {

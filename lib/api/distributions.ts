@@ -134,6 +134,8 @@ export interface BulkCreateAutomaticDto {
   baseValue: number
   competenceDate: string
   distributionDate: string
+  irrf?: number           // Alíquota de IRRF em % (ex: 15 para 15%)
+  otherDeductions?: number // Valor fixo de outras deduções em R$
 }
 
 export interface BulkCreateAutomaticResponse {

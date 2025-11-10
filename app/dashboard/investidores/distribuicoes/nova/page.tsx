@@ -71,6 +71,7 @@ export default function NovaDistribuicaoPage() {
     investorId: "",
     amount: "",
     percentage: "",
+    baseValue: "", // Valor base para calcular automaticamente
     competenceDate: "",
     distributionDate: "",
     description: "",
@@ -115,6 +116,20 @@ export default function NovaDistribuicaoPage() {
       }))
     }
   }, [formData.amount])
+
+  // Auto-calcular amount quando baseValue ou percentage mudarem
+  useEffect(() => {
+    const baseValue = parseFloat(formData.baseValue) || 0
+    const percentage = parseFloat(formData.percentage) || 0
+    
+    if (baseValue > 0 && percentage > 0) {
+      const calculatedAmount = (baseValue * percentage) / 100
+      setFormData(prev => ({
+        ...prev,
+        amount: calculatedAmount.toFixed(2),
+      }))
+    }
+  }, [formData.baseValue, formData.percentage])
 
   const loadSelectedCompany = async () => {
     try {
@@ -469,27 +484,31 @@ export default function NovaDistribuicaoPage() {
             <CardHeader>
               <CardTitle>Valores</CardTitle>
               <CardDescription>
-                Informe os valores da distribuição
+                Informe os valores da distribuição (ou use o valor base + percentual para cálculo automático)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="amount">
-                    Valor Bruto <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    placeholder="0,00"
-                    value={formData.amount}
-                    onChange={e =>
-                      setFormData({ ...formData, amount: e.target.value })
-                    }
-                  />
-                </div>
+              {/* Valor Base (opcional - para cálculo automático) */}
+              <div className="space-y-2">
+                <Label htmlFor="baseValue">
+                  Valor Base do Projeto (opcional)
+                </Label>
+                <Input
+                  id="baseValue"
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={formData.baseValue}
+                  onChange={e =>
+                    setFormData({ ...formData, baseValue: e.target.value })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Informe o valor base do projeto para calcular automaticamente o valor bruto baseado no percentual
+                </p>
+              </div>
 
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="percentage">
                     Percentual (%) <span className="text-destructive">*</span>
@@ -506,6 +525,35 @@ export default function NovaDistribuicaoPage() {
                       setFormData({ ...formData, percentage: e.target.value })
                     }
                   />
+                  {investorPolicy && (
+                    <p className="text-xs text-green-600">
+                      Percentual da política: {distributionPoliciesApi.helpers.formatPercentage(investorPolicy.percentage)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="amount">
+                    Valor Bruto <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="0,00"
+                    value={formData.amount}
+                    onChange={e =>
+                      setFormData({ ...formData, amount: e.target.value })
+                    }
+                  />
+                  {formData.baseValue && formData.percentage && (
+                    <p className="text-xs text-muted-foreground">
+                      Calculado: {parseFloat(formData.baseValue || "0").toLocaleString("pt-BR", {
+                        style: "currency",
+                        currency: "BRL"
+                      })} × {formData.percentage}%
+                    </p>
+                  )}
                 </div>
               </div>
 
