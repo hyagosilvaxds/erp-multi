@@ -35,8 +35,10 @@ import { ArrowLeft, Plus, Trash2, Loader2, Search } from "lucide-react"
 import { salesApi, CreateSaleDto } from "@/lib/api/sales"
 import { customersApi, Customer } from "@/lib/api/customers"
 import { paymentMethodsApi } from "@/lib/api/payment-methods"
+import { productsApi, Product as ApiProduct, stockLocationsApi, StockLocation } from "@/lib/api/products"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/masks"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface PaymentMethod {
   id: string
@@ -46,20 +48,15 @@ interface PaymentMethod {
   active: boolean
 }
 
-interface Product {
-  id: string
-  name: string
-  sku: string
-  price: number
-  stockQuantity: number
-}
-
 interface SaleItemForm {
   productId: string
   productName: string
   quantity: number
   unitPrice: number
   discount: number
+  stockLocationId?: string
+  stockLocationName?: string
+  notes?: string
   subtotal: number
   total: number
 }
@@ -72,18 +69,42 @@ export default function NovaVendaPage() {
   const [loading, setLoading] = useState(false)
   const [customers, setCustomers] = useState<Customer[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  const [stockLocations, setStockLocations] = useState<StockLocation[]>([])
   const [loadingCustomers, setLoadingCustomers] = useState(true)
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(true)
+  const [loadingStockLocations, setLoadingStockLocations] = useState(true)
 
   // Dados da venda
+  const [status, setStatus] = useState<"QUOTE" | "PENDING_APPROVAL">("QUOTE")
   const [customerId, setCustomerId] = useState("")
   const [paymentMethodId, setPaymentMethodId] = useState("")
   const [installments, setInstallments] = useState(1)
-  const [discount, setDiscount] = useState(0)
-  const [shipping, setShipping] = useState(0)
+  
+  // Descontos
+  const [discountPercent, setDiscountPercent] = useState(0)
+  const [discountAmount, setDiscountAmount] = useState(0)
+  
+  // Valores adicionais
+  const [shippingCost, setShippingCost] = useState(0)
+  const [otherCharges, setOtherCharges] = useState(0)
+  const [otherChargesDesc, setOtherChargesDesc] = useState("")
+  
+  // Observações
   const [notes, setNotes] = useState("")
-  const [saleDate, setSaleDate] = useState(new Date().toISOString().split("T")[0])
-  const [deliveryDate, setDeliveryDate] = useState("")
+  const [internalNotes, setInternalNotes] = useState("")
+  
+  // Validade
+  const [validUntil, setValidUntil] = useState("")
+  
+  // Endereço de entrega
+  const [useCustomerAddress, setUseCustomerAddress] = useState(true)
+  const [deliveryStreet, setDeliveryStreet] = useState("")
+  const [deliveryNumber, setDeliveryNumber] = useState("")
+  const [deliveryComplement, setDeliveryComplement] = useState("")
+  const [deliveryNeighborhood, setDeliveryNeighborhood] = useState("")
+  const [deliveryCity, setDeliveryCity] = useState("")
+  const [deliveryState, setDeliveryState] = useState("")
+  const [deliveryZipCode, setDeliveryZipCode] = useState("")
 
   // Itens da venda
   const [items, setItems] = useState<SaleItemForm[]>([])
@@ -91,15 +112,34 @@ export default function NovaVendaPage() {
   // Dialog de adicionar produto
   const [addProductDialogOpen, setAddProductDialogOpen] = useState(false)
   const [searchProduct, setSearchProduct] = useState("")
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [searchResults, setSearchResults] = useState<ApiProduct[]>([])
+  const [loadingProducts, setLoadingProducts] = useState(false)
+  const [selectedProduct, setSelectedProduct] = useState<ApiProduct | null>(null)
   const [productQuantity, setProductQuantity] = useState(1)
   const [productPrice, setProductPrice] = useState(0)
   const [productDiscount, setProductDiscount] = useState(0)
+  const [productStockLocationId, setProductStockLocationId] = useState("")
+  const [productNotes, setProductNotes] = useState("")
 
   useEffect(() => {
     loadCustomers()
     loadPaymentMethods()
+    loadStockLocations()
   }, [])
+
+  // Debounce para busca de produtos
+  useEffect(() => {
+    if (searchProduct.length < 2) {
+      setSearchResults([])
+      return
+    }
+
+    const timer = setTimeout(() => {
+      searchProducts(searchProduct)
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [searchProduct])
 
   const loadCustomers = async () => {
     try {
@@ -133,6 +173,54 @@ export default function NovaVendaPage() {
     }
   }
 
+  const loadStockLocations = async () => {
+    try {
+      setLoadingStockLocations(true)
+      const data = await stockLocationsApi.getAll()
+      setStockLocations(data.filter(loc => loc.active))
+    } catch (error: any) {
+      toast({
+        title: "Erro ao carregar locais de estoque",
+        description: error.response?.data?.message || "Tente novamente mais tarde.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingStockLocations(false)
+    }
+  }
+
+  const searchProducts = async (query: string) => {
+    try {
+      setLoadingProducts(true)
+      const response = await productsApi.getAll({
+        search: query,
+        active: true,
+        limit: 20,
+        sortBy: 'name',
+        sortOrder: 'asc'
+      })
+      setSearchResults(response.products)
+    } catch (error: any) {
+      toast({
+        title: "Erro ao buscar produtos",
+        description: error.response?.data?.message || "Tente novamente mais tarde.",
+        variant: "destructive",
+      })
+      setSearchResults([])
+    } finally {
+      setLoadingProducts(false)
+    }
+  }
+
+  const handleSelectProduct = (product: ApiProduct) => {
+    setSelectedProduct(product)
+    // Preencher com preço de venda
+    const price = parseFloat(product.salePrice) || 0
+    setProductPrice(price)
+    setProductQuantity(1)
+    setProductDiscount(0)
+  }
+
   const handleAddProduct = () => {
     if (!selectedProduct) {
       toast({
@@ -150,6 +238,19 @@ export default function NovaVendaPage() {
         variant: "destructive",
       })
       return
+    }
+
+    // Validar estoque se o produto gerencia estoque
+    if (selectedProduct.manageStock) {
+      const currentStock = selectedProduct.currentStock || 0
+      if (productQuantity > currentStock) {
+        toast({
+          title: "Estoque insuficiente",
+          description: `Disponível em estoque: ${currentStock} unidades.`,
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     if (productPrice <= 0) {
@@ -175,12 +276,19 @@ export default function NovaVendaPage() {
     const subtotal = productQuantity * productPrice
     const total = subtotal - productDiscount
 
+    const locationName = productStockLocationId 
+      ? stockLocations.find(loc => loc.id === productStockLocationId)?.name 
+      : undefined
+
     const newItem: SaleItemForm = {
       productId: selectedProduct.id,
       productName: selectedProduct.name,
       quantity: productQuantity,
       unitPrice: productPrice,
       discount: productDiscount,
+      stockLocationId: productStockLocationId || undefined,
+      stockLocationName: locationName,
+      notes: productNotes || undefined,
       subtotal,
       total,
     }
@@ -191,9 +299,17 @@ export default function NovaVendaPage() {
     setAddProductDialogOpen(false)
     setSelectedProduct(null)
     setSearchProduct("")
+    setSearchResults([])
     setProductQuantity(1)
     setProductPrice(0)
     setProductDiscount(0)
+    setProductStockLocationId("")
+    setProductNotes("")
+
+    toast({
+      title: "Produto adicionado",
+      description: `${selectedProduct.name} foi adicionado à venda.`,
+    })
   }
 
   const handleRemoveItem = (productId: string) => {
@@ -204,26 +320,26 @@ export default function NovaVendaPage() {
     return items.reduce((sum, item) => sum + item.total, 0)
   }
 
-  const calculateTotal = () => {
+  const calculateDiscount = () => {
     const subtotal = calculateSubtotal()
-    return subtotal - discount + shipping
+    if (discountPercent > 0) {
+      return (subtotal * discountPercent) / 100
+    }
+    return discountAmount
   }
 
-  const handleSubmit = async (asDraft: boolean) => {
+  const calculateTotal = () => {
+    const subtotal = calculateSubtotal()
+    const discount = calculateDiscount()
+    return subtotal - discount + shippingCost + otherCharges
+  }
+
+  const handleSubmit = async (asQuote: boolean) => {
     // Validações
     if (!customerId) {
       toast({
         title: "Cliente obrigatório",
         description: "Selecione um cliente para continuar.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!paymentMethodId) {
-      toast({
-        title: "Método de pagamento obrigatório",
-        description: "Selecione um método de pagamento para continuar.",
         variant: "destructive",
       })
       return
@@ -238,31 +354,60 @@ export default function NovaVendaPage() {
       return
     }
 
+    // Validação de local de estoque para venda confirmada
+    if (!asQuote && status === "PENDING_APPROVAL") {
+      const itemsWithoutLocation = items.filter(item => !item.stockLocationId)
+      if (itemsWithoutLocation.length > 0) {
+        toast({
+          title: "Local de estoque obrigatório",
+          description: "Todos os itens devem ter um local de estoque definido para confirmar a venda.",
+          variant: "destructive",
+        })
+        return
+      }
+    }
+
     try {
       setLoading(true)
 
       const dto: CreateSaleDto = {
         customerId,
-        paymentMethodId,
+        status: asQuote ? "QUOTE" : status,
         items: items.map(item => ({
           productId: item.productId,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
-          discount: item.discount,
+          discount: item.discount || undefined,
+          stockLocationId: item.stockLocationId || undefined,
+          notes: item.notes || undefined,
         })),
-        installments,
-        discount,
-        shipping,
-        notes: notes || undefined,
-        saleDate: saleDate || undefined,
-        deliveryDate: deliveryDate || undefined,
+        ...(paymentMethodId && { paymentMethodId }),
+        installments: installments > 1 ? installments : undefined,
+        discountPercent: discountPercent > 0 ? discountPercent : undefined,
+        discountAmount: discountAmount > 0 ? discountAmount : undefined,
+        shippingCost: shippingCost > 0 ? shippingCost : undefined,
+        otherCharges: otherCharges > 0 ? otherCharges : undefined,
+        otherChargesDesc: otherChargesDesc.trim() || undefined,
+        notes: notes.trim() || undefined,
+        internalNotes: internalNotes.trim() || undefined,
+        validUntil: validUntil.trim() ? new Date(validUntil + 'T23:59:59.999Z').toISOString() : undefined,
+        useCustomerAddress,
+        deliveryAddress: !useCustomerAddress && deliveryStreet.trim() ? {
+          street: deliveryStreet,
+          number: deliveryNumber,
+          complement: deliveryComplement.trim() || undefined,
+          neighborhood: deliveryNeighborhood,
+          city: deliveryCity,
+          state: deliveryState,
+          zipCode: deliveryZipCode,
+        } : undefined,
       }
 
       const venda = await salesApi.create(dto)
 
       toast({
-        title: asDraft ? "Orçamento criado" : "Venda criada",
-        description: `${venda.saleNumber} foi ${asDraft ? "salvo como rascunho" : "criado"} com sucesso.`,
+        title: asQuote ? "Orçamento criado" : "Venda criada",
+        description: `${venda.saleNumber} foi ${asQuote ? "salvo como orçamento" : "criado"} com sucesso.`,
       })
 
       router.push(`/dashboard/vendas/${venda.id}`)
@@ -382,6 +527,7 @@ export default function NovaVendaPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Produto</TableHead>
+                        <TableHead>Local</TableHead>
                         <TableHead className="text-right">Qtd</TableHead>
                         <TableHead className="text-right">Preço Unit.</TableHead>
                         <TableHead className="text-right">Desconto</TableHead>
@@ -392,10 +538,22 @@ export default function NovaVendaPage() {
                     <TableBody>
                       {items.map((item) => (
                         <TableRow key={item.productId}>
-                          <TableCell className="font-medium">{item.productName}</TableCell>
+                          <TableCell>
+                            <div className="font-medium">{item.productName}</div>
+                            {item.notes && (
+                              <div className="text-xs text-muted-foreground">{item.notes}</div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.stockLocationName ? (
+                              <span className="text-sm">{item.stockLocationName}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Não definido</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">{item.quantity}</TableCell>
                           <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(item.discount)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(item.discount || 0)}</TableCell>
                           <TableCell className="text-right font-semibold">
                             {formatCurrency(item.total)}
                           </TableCell>
@@ -420,59 +578,182 @@ export default function NovaVendaPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Informações Adicionais</CardTitle>
+                <CardDescription>Observações e notas sobre a venda</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="saleDate">Data da Venda</Label>
-                    <Input
-                      id="saleDate"
-                      type="date"
-                      value={saleDate}
-                      onChange={(e) => setSaleDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="deliveryDate">Data de Entrega</Label>
-                    <Input
-                      id="deliveryDate"
-                      type="date"
-                      value={deliveryDate}
-                      onChange={(e) => setDeliveryDate(e.target.value)}
-                    />
-                  </div>
-                </div>
                 <div className="space-y-2">
-                  <Label htmlFor="notes">Observações</Label>
+                  <Label htmlFor="notes">Observações (visível ao cliente)</Label>
                   <Textarea
                     id="notes"
-                    placeholder="Observações sobre a venda..."
+                    placeholder="Observações que serão vistas pelo cliente..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    rows={4}
+                    rows={3}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="internalNotes">Notas Internas</Label>
+                  <Textarea
+                    id="internalNotes"
+                    placeholder="Notas internas (não visível ao cliente)..."
+                    value={internalNotes}
+                    onChange={(e) => setInternalNotes(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+                {status === "QUOTE" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="validUntil">Válido Até (para orçamentos)</Label>
+                    <Input
+                      id="validUntil"
+                      type="date"
+                      value={validUntil}
+                      onChange={(e) => setValidUntil(e.target.value)}
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Endereço de Entrega */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Endereço de Entrega</CardTitle>
+                <CardDescription>Configure o endereço para entrega dos produtos</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="useCustomerAddress"
+                    checked={useCustomerAddress}
+                    onCheckedChange={(checked) => setUseCustomerAddress(!!checked)}
+                  />
+                  <Label htmlFor="useCustomerAddress" className="cursor-pointer">
+                    Usar endereço do cliente
+                  </Label>
+                </div>
+
+                {!useCustomerAddress && (
+                  <div className="space-y-4 pt-2">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-2 space-y-2">
+                        <Label htmlFor="deliveryStreet">Logradouro *</Label>
+                        <Input
+                          id="deliveryStreet"
+                          placeholder="Rua, Avenida, etc"
+                          value={deliveryStreet}
+                          onChange={(e) => setDeliveryStreet(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="deliveryNumber">Número *</Label>
+                        <Input
+                          id="deliveryNumber"
+                          placeholder="123"
+                          value={deliveryNumber}
+                          onChange={(e) => setDeliveryNumber(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="deliveryComplement">Complemento</Label>
+                        <Input
+                          id="deliveryComplement"
+                          placeholder="Apto, bloco, etc"
+                          value={deliveryComplement}
+                          onChange={(e) => setDeliveryComplement(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="deliveryNeighborhood">Bairro *</Label>
+                        <Input
+                          id="deliveryNeighborhood"
+                          placeholder="Centro"
+                          value={deliveryNeighborhood}
+                          onChange={(e) => setDeliveryNeighborhood(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="deliveryCity">Cidade *</Label>
+                        <Input
+                          id="deliveryCity"
+                          placeholder="São Paulo"
+                          value={deliveryCity}
+                          onChange={(e) => setDeliveryCity(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="deliveryState">Estado *</Label>
+                        <Input
+                          id="deliveryState"
+                          placeholder="SP"
+                          maxLength={2}
+                          value={deliveryState}
+                          onChange={(e) => setDeliveryState(e.target.value.toUpperCase())}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="deliveryZipCode">CEP *</Label>
+                        <Input
+                          id="deliveryZipCode"
+                          placeholder="01234-567"
+                          value={deliveryZipCode}
+                          onChange={(e) => setDeliveryZipCode(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Coluna Lateral - Resumo */}
+          {/* Coluna lateral - Resumo e Pagamento */}
           <div className="space-y-6">
+            {/* Status da Venda */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Status</CardTitle>
+                <CardDescription>Defina o status inicial da venda</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="status">Status Inicial</Label>
+                  <Select value={status} onValueChange={(value: any) => setStatus(value)}>
+                    <SelectTrigger id="status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="QUOTE">Orçamento</SelectItem>
+                      <SelectItem value="PENDING_APPROVAL">Aguardando Aprovação</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Orçamentos não afetam o estoque até serem confirmados
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Pagamento */}
             <Card>
               <CardHeader>
                 <CardTitle>Pagamento</CardTitle>
+                <CardDescription>
+                  {status === "QUOTE" ? "Opcional para orçamentos" : "Configure o pagamento"}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="paymentMethod">Método de Pagamento *</Label>
-                  <Select 
-                    value={paymentMethodId} 
-                    onValueChange={setPaymentMethodId}
-                    disabled={loadingPaymentMethods}
-                  >
+                  <Label htmlFor="paymentMethod">
+                    Método de Pagamento {status !== "QUOTE" && "*"}
+                  </Label>
+                  <Select value={paymentMethodId} onValueChange={setPaymentMethodId}>
                     <SelectTrigger id="paymentMethod">
-                      <SelectValue placeholder={loadingPaymentMethods ? "Carregando..." : "Selecione"} />
+                      <SelectValue placeholder="Selecione um método" />
                     </SelectTrigger>
                     <SelectContent>
                       {paymentMethods.map((method) => (
@@ -483,71 +764,135 @@ export default function NovaVendaPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="installments">Parcelas</Label>
-                  <Select
-                    value={String(installments)}
-                    onValueChange={(value) => setInstallments(Number(value))}
-                    disabled={!paymentMethodId}
-                  >
-                    <SelectTrigger id="installments">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: maxInstallments }, (_, i) => i + 1).map((num) => (
-                        <SelectItem key={num} value={String(num)}>
-                          {num}x
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+
+                {paymentMethodId && (
+                  <div className="space-y-2">
+                    <Label htmlFor="installments">Parcelas</Label>
+                    <Select
+                      value={installments.toString()}
+                      onValueChange={(value) => setInstallments(Number(value))}
+                    >
+                      <SelectTrigger id="installments">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from(
+                          { length: paymentMethods.find(pm => pm.id === paymentMethodId)?.maxInstallments || 1 },
+                          (_, i) => i + 1
+                        ).map((num) => (
+                          <SelectItem key={num} value={num.toString()}>
+                            {num}x
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* Resumo */}
+            {/* Resumo Financeiro */}
             <Card>
               <CardHeader>
-                <CardTitle>Resumo</CardTitle>
+                <CardTitle>Resumo Financeiro</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal</span>
                     <span className="font-medium">{formatCurrency(calculateSubtotal())}</span>
                   </div>
+
                   <div className="space-y-2">
-                    <Label htmlFor="discount">Desconto</Label>
+                    <Label htmlFor="discountPercent">Desconto (%)</Label>
                     <Input
-                      id="discount"
+                      id="discountPercent"
                       type="number"
-                      step="0.01"
                       min="0"
-                      value={discount}
-                      onChange={(e) => setDiscount(Number(e.target.value))}
+                      max="100"
+                      step="0.01"
+                      value={discountPercent}
+                      onChange={(e) => {
+                        setDiscountPercent(Number(e.target.value))
+                        if (Number(e.target.value) > 0) setDiscountAmount(0)
+                      }}
                     />
                   </div>
+
                   <div className="space-y-2">
-                    <Label htmlFor="shipping">Frete</Label>
+                    <Label htmlFor="discountAmount">Desconto (R$)</Label>
                     <Input
-                      id="shipping"
+                      id="discountAmount"
                       type="number"
-                      step="0.01"
                       min="0"
-                      value={shipping}
-                      onChange={(e) => setShipping(Number(e.target.value))}
+                      step="0.01"
+                      value={discountAmount}
+                      onChange={(e) => {
+                        setDiscountAmount(Number(e.target.value))
+                        if (Number(e.target.value) > 0) setDiscountPercent(0)
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use desconto em % OU em valor fixo
+                    </p>
+                  </div>
+
+                  {calculateDiscount() > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Desconto</span>
+                      <span className="font-medium text-destructive">
+                        -{formatCurrency(calculateDiscount())}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="shippingCost">Frete</Label>
+                    <Input
+                      id="shippingCost"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={shippingCost}
+                      onChange={(e) => setShippingCost(Number(e.target.value))}
                     />
                   </div>
-                </div>
-                <div className="border-t pt-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-semibold">Total</span>
-                    <span className="text-2xl font-bold text-primary">
-                      {formatCurrency(calculateTotal())}
-                    </span>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="otherCharges">Outras Despesas</Label>
+                    <Input
+                      id="otherCharges"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={otherCharges}
+                      onChange={(e) => setOtherCharges(Number(e.target.value))}
+                    />
                   </div>
-                  {installments > 1 && (
-                    <div className="mt-2 text-sm text-muted-foreground text-right">
+
+                  {otherCharges > 0 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="otherChargesDesc">Descrição das Despesas</Label>
+                      <Input
+                        id="otherChargesDesc"
+                        placeholder="Ex: Embalagem especial"
+                        value={otherChargesDesc}
+                        onChange={(e) => setOtherChargesDesc(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div className="border-t pt-3">
+                    <div className="flex justify-between">
+                      <span className="text-lg font-semibold">Total</span>
+                      <span className="text-lg font-bold text-primary">
+                        {formatCurrency(calculateTotal())}
+                      </span>
+                    </div>
+                  </div>
+
+                  {paymentMethodId && installments > 1 && (
+                    <div className="text-sm text-muted-foreground text-right">
                       {installments}x de {formatCurrency(calculateTotal() / installments)}
                     </div>
                   )}
@@ -556,11 +901,37 @@ export default function NovaVendaPage() {
             </Card>
           </div>
         </div>
+
+        {/* Botões de ação */}
+        <div className="flex justify-end gap-4">
+          <Button
+            variant="outline"
+            onClick={() => router.push("/dashboard/vendas")}
+            disabled={loading}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => handleSubmit(true)}
+            disabled={loading}
+            variant="secondary"
+          >
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Salvar como Orçamento
+          </Button>
+          <Button
+            onClick={() => handleSubmit(false)}
+            disabled={loading}
+          >
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {status === "QUOTE" ? "Criar Orçamento" : "Criar Venda"}
+          </Button>
+        </div>
       </div>
 
       {/* Dialog Adicionar Produto */}
       <Dialog open={addProductDialogOpen} onOpenChange={setAddProductDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Adicionar Produto</DialogTitle>
             <DialogDescription>
@@ -573,28 +944,127 @@ export default function NovaVendaPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Digite o nome ou código do produto..."
+                  placeholder="Digite o nome, SKU ou código de barras..."
                   className="pl-10"
                   value={searchProduct}
                   onChange={(e) => setSearchProduct(e.target.value)}
                 />
+                {loadingProducts && (
+                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                )}
               </div>
               <p className="text-sm text-muted-foreground">
-                Nota: Integração com API de produtos pendente. Use produtos mockados.
+                Digite pelo menos 2 caracteres para buscar
               </p>
             </div>
+
+            {/* Lista de resultados */}
+            {!selectedProduct && searchResults.length > 0 && (
+              <div className="space-y-2">
+                <Label>Resultados ({searchResults.length})</Label>
+                <div className="border rounded-lg divide-y max-h-[300px] overflow-y-auto">
+                  {searchResults.map((product) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      className="w-full p-3 text-left hover:bg-muted/50 transition-colors"
+                      onClick={() => handleSelectProduct(product)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{product.name}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {product.sku && `SKU: ${product.sku}`}
+                            {product.sku && product.barcode && ' • '}
+                            {product.barcode && `Código: ${product.barcode}`}
+                          </p>
+                          {product.manageStock && (
+                            <p className="text-sm text-muted-foreground">
+                              Estoque: {product.currentStock || 0} {product.unit?.abbreviation || 'un'}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-primary">
+                            {formatCurrency(parseFloat(product.salePrice))}
+                          </p>
+                          {product.category && (
+                            <p className="text-xs text-muted-foreground">
+                              {product.category.name}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!selectedProduct && searchProduct.length >= 2 && !loadingProducts && searchResults.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>Nenhum produto encontrado</p>
+                <p className="text-sm">Tente buscar por outro termo</p>
+              </div>
+            )}
 
             {selectedProduct && (
               <>
                 <div className="rounded-lg border p-4 bg-muted/50">
-                  <h4 className="font-medium mb-1">{selectedProduct.name}</h4>
-                  <p className="text-sm text-muted-foreground">SKU: {selectedProduct.sku}</p>
-                  <p className="text-sm text-muted-foreground">
-                    Estoque: {selectedProduct.stockQuantity} unidades
-                  </p>
-                  <p className="text-sm font-medium mt-2">
-                    Preço sugerido: {formatCurrency(selectedProduct.price)}
-                  </p>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <h4 className="font-medium">{selectedProduct.name}</h4>
+                      {selectedProduct.description && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedProduct.description}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedProduct(null)
+                        setSearchProduct("")
+                      }}
+                    >
+                      Trocar
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {selectedProduct.sku && (
+                      <div>
+                        <span className="text-muted-foreground">SKU: </span>
+                        <span className="font-medium">{selectedProduct.sku}</span>
+                      </div>
+                    )}
+                    {selectedProduct.barcode && (
+                      <div>
+                        <span className="text-muted-foreground">Código: </span>
+                        <span className="font-medium">{selectedProduct.barcode}</span>
+                      </div>
+                    )}
+                    {selectedProduct.manageStock && (
+                      <div>
+                        <span className="text-muted-foreground">Estoque: </span>
+                        <span className="font-medium">
+                          {selectedProduct.currentStock || 0} {selectedProduct.unit?.abbreviation || 'un'}
+                        </span>
+                      </div>
+                    )}
+                    {selectedProduct.category && (
+                      <div>
+                        <span className="text-muted-foreground">Categoria: </span>
+                        <span className="font-medium">{selectedProduct.category.name}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-sm text-muted-foreground">Preço de venda</p>
+                    <p className="text-lg font-semibold text-primary">
+                      {formatCurrency(parseFloat(selectedProduct.salePrice))}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -604,10 +1074,15 @@ export default function NovaVendaPage() {
                       id="quantity"
                       type="number"
                       min="1"
-                      max={selectedProduct.stockQuantity}
+                      max={selectedProduct.manageStock ? (selectedProduct.currentStock || 0) : undefined}
                       value={productQuantity}
                       onChange={(e) => setProductQuantity(Number(e.target.value))}
                     />
+                    {selectedProduct.manageStock && (
+                      <p className="text-xs text-muted-foreground">
+                        Máx: {selectedProduct.currentStock || 0} disponíveis
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="price">Preço Unitário *</Label>
@@ -622,15 +1097,54 @@ export default function NovaVendaPage() {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="productDiscount">Desconto</Label>
+                    <Input
+                      id="productDiscount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={productDiscount}
+                      onChange={(e) => setProductDiscount(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="stockLocation">
+                      Local de Estoque {status !== "QUOTE" && "*"}
+                    </Label>
+                    <Select value={productStockLocationId} onValueChange={setProductStockLocationId}>
+                      <SelectTrigger id="stockLocation">
+                        <SelectValue placeholder="Selecione o local" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stockLocations.map((location) => (
+                          <SelectItem key={location.id} value={location.id}>
+                            {location.name} {location.isDefault && "(Padrão)"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedProduct.manageStock && productStockLocationId && (
+                      <p className="text-xs text-muted-foreground">
+                        {selectedProduct.stocksByLocation?.find(s => s.locationId === productStockLocationId) ? (
+                          <>Estoque neste local: {selectedProduct.stocksByLocation.find(s => s.locationId === productStockLocationId)?.quantity || 0}</>
+                        ) : (
+                          <>Estoque neste local não disponível</>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="productDiscount">Desconto</Label>
-                  <Input
-                    id="productDiscount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={productDiscount}
-                    onChange={(e) => setProductDiscount(Number(e.target.value))}
+                  <Label htmlFor="productNotes">Observações do Item</Label>
+                  <Textarea
+                    id="productNotes"
+                    placeholder="Observações específicas deste produto..."
+                    value={productNotes}
+                    onChange={(e) => setProductNotes(e.target.value)}
+                    rows={2}
                   />
                 </div>
 

@@ -6,16 +6,87 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Shield } from "lucide-react"
+import { Shield, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { authApi } from "@/lib/api/auth"
+import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function ConfiguracoesPage() {
+  const { toast } = useToast()
   const [senhaAtual, setSenhaAtual] = useState("")
   const [novaSenha, setNovaSenha] = useState("")
   const [confirmarSenha, setConfirmarSenha] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
-  const handleAlterarSenha = () => {
-    // Implementar lógica de alteração de senha
-    console.log("Alterar senha")
+  const validateForm = (): boolean => {
+    setError("")
+
+    if (!senhaAtual.trim()) {
+      setError("A senha atual é obrigatória")
+      return false
+    }
+
+    if (!novaSenha.trim()) {
+      setError("A nova senha é obrigatória")
+      return false
+    }
+
+    if (novaSenha.length < 6) {
+      setError("A nova senha deve ter no mínimo 6 caracteres")
+      return false
+    }
+
+    if (novaSenha === senhaAtual) {
+      setError("A nova senha deve ser diferente da senha atual")
+      return false
+    }
+
+    if (novaSenha !== confirmarSenha) {
+      setError("As senhas não coincidem")
+      return false
+    }
+
+    return true
+  }
+
+  const handleAlterarSenha = async () => {
+    if (!validateForm()) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError("")
+      
+      await authApi.changePassword(senhaAtual, novaSenha)
+      
+      toast({
+        title: "Senha alterada com sucesso",
+        description: "Sua senha foi atualizada.",
+      })
+
+      // Limpar campos
+      setSenhaAtual("")
+      setNovaSenha("")
+      setConfirmarSenha("")
+    } catch (error: any) {
+      const errorMessage = error.message || "Erro ao alterar senha"
+      setError(errorMessage)
+      toast({
+        title: "Erro ao alterar senha",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !loading) {
+      handleAlterarSenha()
+    }
   }
 
   return (
@@ -41,44 +112,67 @@ export default function ConfiguracoesPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-4 max-w-md">
               <div className="space-y-2">
-                <Label htmlFor="senha-atual">Senha Atual</Label>
+                <Label htmlFor="senha-atual">Senha Atual *</Label>
                 <Input
                   id="senha-atual"
                   type="password"
                   value={senhaAtual}
                   onChange={(e) => setSenhaAtual(e.target.value)}
+                  onKeyPress={handleKeyPress}
                   placeholder="Digite sua senha atual"
+                  disabled={loading}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nova-senha">Nova Senha</Label>
+                <Label htmlFor="nova-senha">Nova Senha *</Label>
                 <Input
                   id="nova-senha"
                   type="password"
                   value={novaSenha}
                   onChange={(e) => setNovaSenha(e.target.value)}
+                  onKeyPress={handleKeyPress}
                   placeholder="Digite a nova senha"
+                  disabled={loading}
                 />
                 <p className="text-xs text-muted-foreground">
-                  A senha deve ter no mínimo 8 caracteres
+                  A senha deve ter no mínimo 6 caracteres
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirmar-senha">Confirmar Nova Senha</Label>
+                <Label htmlFor="confirmar-senha">Confirmar Nova Senha *</Label>
                 <Input
                   id="confirmar-senha"
                   type="password"
                   value={confirmarSenha}
                   onChange={(e) => setConfirmarSenha(e.target.value)}
+                  onKeyPress={handleKeyPress}
                   placeholder="Digite a nova senha novamente"
+                  disabled={loading}
                 />
               </div>
             </div>
 
-            <Button onClick={handleAlterarSenha}>
-              Alterar Senha
+            <Button onClick={handleAlterarSenha} disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Alterando senha...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Alterar Senha
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -97,6 +191,8 @@ export default function ConfiguracoesPage() {
                   <li>Não compartilhe sua senha com outras pessoas</li>
                   <li>Altere sua senha periodicamente</li>
                   <li>Não use a mesma senha em diferentes serviços</li>
+                  <li>A senha deve ter no mínimo 6 caracteres</li>
+                  <li>A nova senha deve ser diferente da senha antiga</li>
                 </ul>
               </div>
             </div>

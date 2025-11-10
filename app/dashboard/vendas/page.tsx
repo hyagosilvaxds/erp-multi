@@ -28,6 +28,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Search, Plus, MoreVertical, Download, CheckCircle2, XCircle, Eye, Edit, Loader2, Filter, X, Settings } from "lucide-react"
 import { salesApi, Sale, SaleStatus, saleStatusLabels, saleStatusColors } from "@/lib/api/sales"
+import { customersApi } from "@/lib/api/customers"
+import { paymentMethodsApi } from "@/lib/api/payment-methods"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/masks"
 import { useRouter } from "next/navigation"
@@ -52,6 +54,8 @@ export default function VendasPage() {
   const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null)
   const [cancelReason, setCancelReason] = useState("")
   const [actionLoading, setActionLoading] = useState(false)
+  const [exportingExcel, setExportingExcel] = useState(false)
+  const [exportingPDF, setExportingPDF] = useState<string | null>(null)
 
   // Approve Dialog
   const [approveDialogOpen, setApproveDialogOpen] = useState(false)
@@ -59,6 +63,22 @@ export default function VendasPage() {
   const [requiresCreditAnalysis, setRequiresCreditAnalysis] = useState(false)
   const [creditAnalysisStatus, setCreditAnalysisStatus] = useState<"APPROVED" | "REJECTED">("APPROVED")
   const [creditAnalysisNotes, setCreditAnalysisNotes] = useState("")
+
+  // Export Excel Dialog
+  const [exportExcelDialogOpen, setExportExcelDialogOpen] = useState(false)
+  const [excelFilters, setExcelFilters] = useState({
+    status: "",
+    customerId: "",
+    paymentMethodId: "",
+    startDate: "",
+    endDate: "",
+    minAmount: "",
+    maxAmount: "",
+  })
+  const [customers, setCustomers] = useState<any[]>([])
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([])
+  const [loadingCustomers, setLoadingCustomers] = useState(false)
+  const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false)
 
   useEffect(() => {
     loadSales()
@@ -151,33 +171,43 @@ export default function VendasPage() {
     try {
       setActionLoading(true)
       
-      const approveDto = requiresCreditAnalysis 
-        ? {
-            creditAnalysisStatus,
-            creditAnalysisNotes,
-          }
-        : undefined
-
-      const result = await salesApi.approve(saleToApprove.id, approveDto)
-      
-      if (result.status === "CANCELED") {
+      // Se for orçamento (QUOTE), usar endpoint de confirmar que baixa estoque e cria financeiro
+      if (saleToApprove.status === "QUOTE") {
+        await salesApi.confirm(saleToApprove.id)
         toast({
-          title: "Crédito reprovado",
-          description: "A venda foi cancelada devido à reprovação da análise de crédito.",
-          variant: "destructive",
+          title: "Orçamento confirmado",
+          description: "O orçamento foi confirmado com sucesso. Estoque baixado e financeiro criado.",
         })
       } else {
-        toast({
-          title: "Venda aprovada",
-          description: "A venda foi aprovada com sucesso.",
-        })
+        // Para vendas, usar endpoint de aprovar com análise de crédito se necessário
+        const approveDto = requiresCreditAnalysis 
+          ? {
+              creditAnalysisStatus,
+              creditAnalysisNotes,
+            }
+          : undefined
+
+        const result = await salesApi.approve(saleToApprove.id, approveDto)
+        
+        if (result.status === "CANCELED") {
+          toast({
+            title: "Crédito reprovado",
+            description: "A venda foi cancelada devido à reprovação da análise de crédito.",
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Venda aprovada",
+            description: "A venda foi aprovada com sucesso.",
+          })
+        }
       }
       
       setApproveDialogOpen(false)
       loadSales()
     } catch (error: any) {
       toast({
-        title: "Erro ao aprovar venda",
+        title: saleToApprove.status === "QUOTE" ? "Erro ao confirmar orçamento" : "Erro ao aprovar venda",
         description: error.response?.data?.message || "Tente novamente mais tarde.",
         variant: "destructive",
       })
@@ -204,6 +234,152 @@ export default function VendasPage() {
     } finally {
       setActionLoading(false)
     }
+  }
+
+  const handleExportSalePDF = async (sale: Sale) => {
+    try {
+      setExportingPDF(sale.id)
+      
+      const blob = await salesApi.exportToPDF(sale.id)
+      
+      // Criar URL temporária para o blob
+      const url = window.URL.createObjectURL(blob)
+      
+      // Criar link temporário e clicar nele
+      const link = document.createElement('a')
+      link.href = url
+      const fileName = sale.status === "QUOTE" ? `orcamento-${sale.code}.pdf` : `venda-${sale.code}.pdf`
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      
+      // Limpar
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      toast({
+        title: "PDF exportado",
+        description: "O arquivo foi baixado com sucesso.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Erro ao exportar PDF",
+        description: error.response?.data?.message || "Tente novamente mais tarde.",
+        variant: "destructive",
+      })
+    } finally {
+      setExportingPDF(null)
+    }
+  }
+
+  const openExportExcelDialog = async () => {
+    setExportExcelDialogOpen(true)
+    
+    // Carregar clientes e métodos de pagamento
+    if (customers.length === 0) {
+      try {
+        setLoadingCustomers(true)
+        const data = await customersApi.getAll({ limit: 1000 })
+        setCustomers(data.data)
+      } catch (error) {
+        console.error("Erro ao carregar clientes:", error)
+      } finally {
+        setLoadingCustomers(false)
+      }
+    }
+
+    if (paymentMethods.length === 0) {
+      try {
+        setLoadingPaymentMethods(true)
+        const data = await paymentMethodsApi.getAll()
+        setPaymentMethods(data)
+      } catch (error) {
+        console.error("Erro ao carregar métodos de pagamento:", error)
+      } finally {
+        setLoadingPaymentMethods(false)
+      }
+    }
+  }
+
+  const handleExportExcel = async () => {
+    try {
+      setExportingExcel(true)
+      
+      // Construir filtros do modal
+      const filters: any = {}
+      
+      if (excelFilters.status) {
+        filters.status = excelFilters.status
+      }
+      
+      if (excelFilters.customerId) {
+        filters.customerId = excelFilters.customerId
+      }
+
+      if (excelFilters.paymentMethodId) {
+        filters.paymentMethodId = excelFilters.paymentMethodId
+      }
+
+      if (excelFilters.startDate) {
+        filters.startDate = excelFilters.startDate
+      }
+
+      if (excelFilters.endDate) {
+        filters.endDate = excelFilters.endDate
+      }
+
+      if (excelFilters.minAmount) {
+        filters.minAmount = parseFloat(excelFilters.minAmount)
+      }
+
+      if (excelFilters.maxAmount) {
+        filters.maxAmount = parseFloat(excelFilters.maxAmount)
+      }
+
+      const blob = await salesApi.exportToExcel(filters)
+      
+      // Criar URL temporária para o blob
+      const url = window.URL.createObjectURL(blob)
+      
+      // Criar link temporário e clicar nele
+      const link = document.createElement('a')
+      link.href = url
+      const fileName = `vendas-${new Date().toISOString().split('T')[0]}.xlsx`
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      
+      // Limpar
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      toast({
+        title: "Excel exportado",
+        description: "O arquivo foi baixado com sucesso.",
+      })
+      
+      setExportExcelDialogOpen(false)
+    } catch (error: any) {
+      toast({
+        title: "Erro ao exportar Excel",
+        description: error.response?.data?.message || "Tente novamente mais tarde.",
+        variant: "destructive",
+      })
+    } finally {
+      setExportingExcel(false)
+    }
+  }
+
+  const clearExcelFilters = () => {
+    setExcelFilters({
+      status: "",
+      customerId: "",
+      paymentMethodId: "",
+      startDate: "",
+      endDate: "",
+      minAmount: "",
+      maxAmount: "",
+    })
   }
 
   const openCancelDialog = (sale: Sale) => {
@@ -269,9 +445,17 @@ export default function VendasPage() {
               <Settings className="mr-2 h-4 w-4" />
               Configurações
             </Button>
-            <Button variant="outline" disabled>
-              <Download className="mr-2 h-4 w-4" />
-              Exportar
+            <Button 
+              variant="outline" 
+              onClick={openExportExcelDialog}
+              disabled={exportingExcel}
+            >
+              {exportingExcel ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              Exportar Excel
             </Button>
             <Button onClick={() => router.push("/dashboard/vendas/nova")}>
               <Plus className="mr-2 h-4 w-4" />
@@ -305,6 +489,7 @@ export default function VendasPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">Todos os Status</SelectItem>
+                  <SelectItem value="QUOTE">Orçamento</SelectItem>
                   <SelectItem value="DRAFT">Rascunho</SelectItem>
                   <SelectItem value="PENDING_APPROVAL">Pendente Aprovação</SelectItem>
                   <SelectItem value="APPROVED">Aprovada</SelectItem>
@@ -425,7 +610,7 @@ export default function VendasPage() {
                     {sales.map((sale) => (
                       <TableRow key={sale.id}>
                         <TableCell className="font-mono text-sm font-medium">
-                          {sale.saleNumber}
+                          {sale.code || sale.saleNumber}
                         </TableCell>
                         <TableCell>{sale.customer?.name || "—"}</TableCell>
                         <TableCell>{sale.items?.length || 0} {sale.items?.length === 1 ? "item" : "itens"}</TableCell>
@@ -434,7 +619,7 @@ export default function VendasPage() {
                         </TableCell>
                         <TableCell>{getStatusBadge(sale.status)}</TableCell>
                         <TableCell className="text-muted-foreground">
-                          {formatDate(sale.saleDate || sale.createdAt)}
+                          {formatDate(sale.quoteDate || sale.saleDate || sale.createdAt)}
                         </TableCell>
                         <TableCell>
                           <DropdownMenu>
@@ -450,17 +635,31 @@ export default function VendasPage() {
                                 <Eye className="mr-2 h-4 w-4" />
                                 Ver detalhes
                               </DropdownMenuItem>
-                              {sale.status === "DRAFT" && (
+                              <DropdownMenuItem 
+                                onClick={() => handleExportSalePDF(sale)}
+                                disabled={exportingPDF === sale.id}
+                              >
+                                {exportingPDF === sale.id ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Download className="mr-2 h-4 w-4" />
+                                )}
+                                Exportar PDF
+                              </DropdownMenuItem>
+                              {(sale.status === "QUOTE" || sale.status === "DRAFT") && (
                                 <DropdownMenuItem onClick={() => router.push(`/dashboard/vendas/${sale.id}/editar`)}>
                                   <Edit className="mr-2 h-4 w-4" />
                                   Editar
                                 </DropdownMenuItem>
                               )}
-                              {sale.status === "PENDING_APPROVAL" && (
-                                <DropdownMenuItem onClick={() => openApproveDialog(sale)}>
-                                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                                  Aprovar venda
-                                </DropdownMenuItem>
+                              {(sale.status === "QUOTE" || sale.status === "DRAFT" || sale.status === "PENDING_APPROVAL") && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => openApproveDialog(sale)}>
+                                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                                    Aprovar {sale.status === "QUOTE" ? "orçamento" : "venda"}
+                                  </DropdownMenuItem>
+                                </>
                               )}
                               {sale.status === "APPROVED" && (
                                 <DropdownMenuItem onClick={() => handleCompleteSale(sale.id)}>
@@ -468,7 +667,7 @@ export default function VendasPage() {
                                   Marcar como concluída
                                 </DropdownMenuItem>
                               )}
-                              {(sale.status === "DRAFT" || sale.status === "PENDING_APPROVAL" || sale.status === "APPROVED") && (
+                              {(sale.status !== "COMPLETED" && sale.status !== "CANCELED") && (
                                 <>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
@@ -476,7 +675,7 @@ export default function VendasPage() {
                                     onClick={() => openCancelDialog(sale)}
                                   >
                                     <XCircle className="mr-2 h-4 w-4" />
-                                    Cancelar venda
+                                    Cancelar {sale.status === "QUOTE" ? "orçamento" : "venda"}
                                   </DropdownMenuItem>
                                 </>
                               )}
@@ -572,16 +771,27 @@ export default function VendasPage() {
       <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Aprovar Venda</DialogTitle>
+            <DialogTitle>
+              {saleToApprove?.status === "QUOTE" ? "Confirmar Orçamento" : "Aprovar Venda"}
+            </DialogTitle>
             <DialogDescription>
-              Venda <span className="font-mono font-semibold">{saleToApprove?.saleNumber}</span>
+              {saleToApprove?.status === "QUOTE" ? "Orçamento" : "Venda"} <span className="font-mono font-semibold">{saleToApprove?.code || saleToApprove?.saleNumber}</span>
               {" "}• Cliente: <span className="font-semibold">{saleToApprove?.customer?.name}</span>
               {" "}• Total: <span className="font-semibold">{saleToApprove && formatCurrency(saleToApprove.totalAmount)}</span>
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            {requiresCreditAnalysis ? (
+            {saleToApprove?.status === "QUOTE" ? (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                <p className="text-sm text-green-800">
+                  <strong>Confirmar Orçamento</strong>
+                  <br />
+                  Ao confirmar este orçamento, o estoque será baixado e o financeiro será criado automaticamente.
+                  Esta ação não pode ser desfeita.
+                </p>
+              </div>
+            ) : requiresCreditAnalysis ? (
               <>
                 <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
                   <p className="text-sm text-yellow-800">
@@ -677,7 +887,12 @@ export default function VendasPage() {
                 </>
               ) : (
                 <>
-                  {creditAnalysisStatus === "APPROVED" ? (
+                  {saleToApprove?.status === "QUOTE" ? (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Confirmar Orçamento
+                    </>
+                  ) : creditAnalysisStatus === "APPROVED" ? (
                     <>
                       <CheckCircle2 className="mr-2 h-4 w-4" />
                       Aprovar Venda
@@ -688,6 +903,214 @@ export default function VendasPage() {
                       Reprovar Crédito
                     </>
                   )}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Excel Dialog */}
+      <Dialog open={exportExcelDialogOpen} onOpenChange={setExportExcelDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Exportar Vendas para Excel</DialogTitle>
+            <DialogDescription>
+              Configure os filtros para exportar as vendas desejadas. Todos os filtros são opcionais.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              {/* Status */}
+              <div className="space-y-2">
+                <Label htmlFor="excelStatus">Status</Label>
+                <div className="flex gap-2">
+                  <Select
+                    value={excelFilters.status}
+                    onValueChange={(value) => setExcelFilters({ ...excelFilters, status: value })}
+                  >
+                    <SelectTrigger id="excelStatus" className="flex-1">
+                      <SelectValue placeholder="Todos os status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="QUOTE">Orçamento</SelectItem>
+                      <SelectItem value="DRAFT">Rascunho</SelectItem>
+                      <SelectItem value="PENDING_APPROVAL">Pendente Aprovação</SelectItem>
+                      <SelectItem value="APPROVED">Aprovada</SelectItem>
+                      <SelectItem value="COMPLETED">Concluída</SelectItem>
+                      <SelectItem value="CANCELED">Cancelada</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {excelFilters.status && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setExcelFilters({ ...excelFilters, status: "" })}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Cliente */}
+              <div className="space-y-2">
+                <Label htmlFor="excelCustomer">Cliente</Label>
+                <div className="flex gap-2">
+                  <Select
+                    value={excelFilters.customerId}
+                    onValueChange={(value) => setExcelFilters({ ...excelFilters, customerId: value })}
+                    disabled={loadingCustomers}
+                  >
+                    <SelectTrigger id="excelCustomer" className="flex-1">
+                      <SelectValue placeholder={loadingCustomers ? "Carregando..." : "Todos os clientes"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customers.map((customer) => (
+                        <SelectItem key={customer.id} value={customer.id}>
+                          {customer.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {excelFilters.customerId && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setExcelFilters({ ...excelFilters, customerId: "" })}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Método de Pagamento */}
+              <div className="space-y-2">
+                <Label htmlFor="excelPaymentMethod">Método de Pagamento</Label>
+                <div className="flex gap-2">
+                  <Select
+                    value={excelFilters.paymentMethodId}
+                    onValueChange={(value) => setExcelFilters({ ...excelFilters, paymentMethodId: value })}
+                    disabled={loadingPaymentMethods}
+                  >
+                    <SelectTrigger id="excelPaymentMethod" className="flex-1">
+                      <SelectValue placeholder={loadingPaymentMethods ? "Carregando..." : "Todos os métodos"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentMethods.map((method) => (
+                        <SelectItem key={method.id} value={method.id}>
+                          {method.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {excelFilters.paymentMethodId && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setExcelFilters({ ...excelFilters, paymentMethodId: "" })}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Data Inicial */}
+              <div className="space-y-2">
+                <Label htmlFor="excelStartDate">Data Inicial</Label>
+                <Input
+                  id="excelStartDate"
+                  type="date"
+                  value={excelFilters.startDate}
+                  onChange={(e) => setExcelFilters({ ...excelFilters, startDate: e.target.value })}
+                />
+              </div>
+
+              {/* Data Final */}
+              <div className="space-y-2">
+                <Label htmlFor="excelEndDate">Data Final</Label>
+                <Input
+                  id="excelEndDate"
+                  type="date"
+                  value={excelFilters.endDate}
+                  onChange={(e) => setExcelFilters({ ...excelFilters, endDate: e.target.value })}
+                />
+              </div>
+
+              {/* Valor Mínimo */}
+              <div className="space-y-2">
+                <Label htmlFor="excelMinAmount">Valor Mínimo (R$)</Label>
+                <Input
+                  id="excelMinAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={excelFilters.minAmount}
+                  onChange={(e) => setExcelFilters({ ...excelFilters, minAmount: e.target.value })}
+                />
+              </div>
+
+              {/* Valor Máximo */}
+              <div className="space-y-2">
+                <Label htmlFor="excelMaxAmount">Valor Máximo (R$)</Label>
+                <Input
+                  id="excelMaxAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={excelFilters.maxAmount}
+                  onChange={(e) => setExcelFilters({ ...excelFilters, maxAmount: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Resumo dos Filtros */}
+            <div className="border-t pt-4">
+              <p className="text-sm text-muted-foreground mb-2">
+                {Object.values(excelFilters).filter(v => v).length > 0 ? (
+                  <>
+                    <strong>{Object.values(excelFilters).filter(v => v).length}</strong> filtro(s) ativo(s)
+                  </>
+                ) : (
+                  "Nenhum filtro aplicado. Todas as vendas serão exportadas."
+                )}
+              </p>
+              {Object.values(excelFilters).filter(v => v).length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearExcelFilters}
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Limpar Filtros
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setExportExcelDialogOpen(false)}
+              disabled={exportingExcel}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleExportExcel} disabled={exportingExcel}>
+              {exportingExcel ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Exportando...
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Exportar Excel
                 </>
               )}
             </Button>

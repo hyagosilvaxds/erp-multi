@@ -127,6 +127,26 @@ export const authApi = {
   },
 
   /**
+   * Altera a senha do usuário autenticado
+   */
+  async changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }> {
+    try {
+      const { data } = await apiClient.patch<{ message: string }>('/auth/change-password', {
+        oldPassword,
+        newPassword,
+      })
+      
+      return data
+    } catch (error: any) {
+      const message = error.response?.data?.message
+      if (Array.isArray(message)) {
+        throw new Error(message.join(', '))
+      }
+      throw new Error(message || 'Erro ao alterar senha')
+    }
+  },
+
+  /**
    * Verifica se o usuário está autenticado
    */
   isAuthenticated(): boolean {

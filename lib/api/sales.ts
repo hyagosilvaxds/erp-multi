@@ -5,26 +5,44 @@ import { authApi } from "./auth"
 // Types & Interfaces
 // ============================================
 
-export type SaleStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "COMPLETED" | "CANCELED"
+export type SaleStatus = "QUOTE" | "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "COMPLETED" | "CANCELED"
 export type CreditAnalysisStatus = "PENDING" | "APPROVED" | "REJECTED"
 
 export interface SaleItem {
   id: string
   saleId: string
   productId: string
+  stockLocationId?: string
+  productCode?: string
+  productName?: string
+  productUnit?: string
   quantity: number
   unitPrice: number
   subtotal: number
   discount: number
-  totalPrice: number
+  total: number
+  totalPrice?: number // Mantido para compatibilidade
+  notes?: string
   createdAt: string
   updatedAt: string
   product?: {
     id: string
     name: string
-    sku: string
+    sku?: string
     price?: number
     stockQuantity?: number
+    description?: string
+    barcode?: string
+    reference?: string
+    costPrice?: string
+    salePrice?: string
+    currentStock?: string
+  }
+  stockLocation?: {
+    id: string
+    name: string
+    code: string
+    description?: string
   }
 }
 
@@ -33,42 +51,79 @@ export interface Sale {
   companyId: string
   customerId: string
   paymentMethodId: string
-  saleNumber: string
+  code: string // Código da venda (VDA-000001)
+  saleNumber?: string // Mantido para compatibilidade
   status: SaleStatus
-  saleDate: string
-  deliveryDate: string | null
   subtotal: number
-  discount: number
-  shipping: number
+  discountAmount: number
+  discountPercent: number
+  discount?: number // Mantido para compatibilidade
+  shippingCost: number
+  shipping?: number // Mantido para compatibilidade
+  otherCharges: number
+  otherChargesDesc: string | null
   totalAmount: number
   installments: number
-  notes: string | null
+  installmentValue: number
+  creditAnalysisRequired: boolean
   creditAnalysisStatus: CreditAnalysisStatus | null
+  creditAnalysisDate: string | null
   creditAnalysisNotes: string | null
-  approvedAt: string | null
-  approvedBy: string | null
+  creditScore: number | null
+  useCustomerAddress: boolean
+  deliveryAddress: {
+    street: string
+    number: string
+    complement?: string
+    neighborhood: string
+    city: string
+    state: string
+    zipCode: string
+  } | null
+  notes: string | null
+  internalNotes: string | null
+  quoteDate: string | null
+  validUntil: string | null
+  saleDate?: string | null // Mantido para compatibilidade
+  deliveryDate?: string | null
+  confirmedAt: string | null
   canceledAt: string | null
-  canceledBy: string | null
-  cancelReason: string | null
+  cancellationReason: string | null
+  cancelReason?: string | null // Mantido para compatibilidade
+  approvedAt: string | null
+  approvedBy?: string | null
+  canceledBy?: string | null
   completedAt: string | null
   createdAt: string
   updatedAt: string
   items: SaleItem[]
   customer?: {
     id: string
+    personType: "FISICA" | "JURIDICA"
     name: string
-    email: string
-    document?: string
-    cpfCnpj?: string
-    phone?: string
+    cpf?: string
+    cnpj?: string
+    email: string | null
+    phone: string | null
+    mobile: string | null
+    document?: string // Mantido para compatibilidade
+    cpfCnpj?: string // Mantido para compatibilidade
+    creditLimit?: string
+    active: boolean
   }
   paymentMethod?: {
     id: string
     name: string
     code: string
     type: string
+    active: boolean
     allowInstallments?: boolean
     maxInstallments?: number
+    installmentFee?: number
+    requiresCreditAnalysis?: boolean
+    minCreditScore?: number
+    daysToReceive?: number
+    transactionFee?: number
   }
 }
 
@@ -77,6 +132,8 @@ export interface CreateSaleItemDto {
   quantity: number
   unitPrice: number
   discount?: number
+  stockLocationId?: string
+  notes?: string
 }
 
 export interface AddSaleItemDto {
@@ -84,16 +141,51 @@ export interface AddSaleItemDto {
   quantity: number
   unitPrice: number
   discount?: number
+  stockLocationId?: string
+  notes?: string
 }
 
 export interface CreateSaleDto {
+  // Obrigatórios
   customerId: string
-  paymentMethodId: string
   items: CreateSaleItemDto[]
+  
+  // Opcionais
+  status?: "QUOTE" | "PENDING_APPROVAL"
+  paymentMethodId?: string
   installments?: number
+  
+  // Descontos
+  discountPercent?: number
+  discountAmount?: number
+  
+  // Valores adicionais
+  shippingCost?: number
+  otherCharges?: number
+  otherChargesDesc?: string
+  
+  // Endereço de entrega
+  useCustomerAddress?: boolean
+  deliveryAddress?: {
+    street: string
+    number: string
+    complement?: string
+    neighborhood: string
+    city: string
+    state: string
+    zipCode: string
+  }
+  
+  // Observações
+  notes?: string
+  internalNotes?: string
+  
+  // Validade
+  validUntil?: string
+  
+  // Compatibilidade (deprecated)
   discount?: number
   shipping?: number
-  notes?: string
   deliveryDate?: string
   saleDate?: string
 }
@@ -333,7 +425,7 @@ export async function cancelSale(id: string, reason: string): Promise<Sale> {
 
     const { data } = await apiClient.post<Sale>(
       `/sales/${id}/cancel`,
-      { reason },
+      { cancellationReason: reason },
       {
         headers: {
           "x-company-id": selectedCompany.id,
@@ -362,6 +454,106 @@ export async function completeSale(id: string): Promise<Sale> {
         "x-company-id": selectedCompany.id,
       },
     })
+
+    return data
+  } catch (error: any) {
+    throw error
+  }
+}
+
+/**
+ * Confirma uma venda (baixa estoque + cria financeiro)
+ */
+export async function confirmSale(id: string): Promise<Sale> {
+  try {
+    const selectedCompany = authApi.getSelectedCompany()
+    if (!selectedCompany) {
+      throw new Error("Nenhuma empresa selecionada")
+    }
+
+    const { data } = await apiClient.post<Sale>(`/sales/${id}/confirm`, {}, {
+      headers: {
+        "x-company-id": selectedCompany.id,
+      },
+    })
+
+    return data
+  } catch (error: any) {
+    throw error
+  }
+}
+
+/**
+ * Aprova análise de crédito
+ */
+export async function approveCreditAnalysis(id: string, notes?: string): Promise<Sale> {
+  try {
+    const selectedCompany = authApi.getSelectedCompany()
+    if (!selectedCompany) {
+      throw new Error("Nenhuma empresa selecionada")
+    }
+
+    const { data } = await apiClient.post<Sale>(
+      `/sales/${id}/credit-analysis/approve`, 
+      { notes: notes || '' },
+      {
+        headers: {
+          "x-company-id": selectedCompany.id,
+        },
+      }
+    )
+
+    return data
+  } catch (error: any) {
+    throw error
+  }
+}
+
+/**
+ * Rejeita análise de crédito
+ */
+export async function rejectCreditAnalysis(id: string, notes: string): Promise<Sale> {
+  try {
+    const selectedCompany = authApi.getSelectedCompany()
+    if (!selectedCompany) {
+      throw new Error("Nenhuma empresa selecionada")
+    }
+
+    const { data } = await apiClient.post<Sale>(
+      `/sales/${id}/credit-analysis/reject`, 
+      { notes },
+      {
+        headers: {
+          "x-company-id": selectedCompany.id,
+        },
+      }
+    )
+
+    return data
+  } catch (error: any) {
+    throw error
+  }
+}
+
+/**
+ * Altera status da venda manualmente
+ */
+export async function changeSaleStatus(id: string, status: SaleStatus): Promise<Sale> {
+  try {
+    const selectedCompany = authApi.getSelectedCompany()
+    if (!selectedCompany) {
+      throw new Error("Nenhuma empresa selecionada")
+    }
+
+    const { data } = await apiClient.patch<Sale>(
+      `/sales/${id}/status`, 
+      { status },
+      {
+        headers: {
+          "x-company-id": selectedCompany.id,
+        },
+      }
+    )
 
     return data
   } catch (error: any) {
@@ -477,6 +669,141 @@ export async function getSaleStatistics(
   }
 }
 
+/**
+ * Exporta uma venda em PDF
+ */
+async function exportSaleToPDF(id: string): Promise<Blob> {
+  try {
+    const selectedCompany = authApi.getSelectedCompany()
+    if (!selectedCompany) {
+      throw new Error("Nenhuma empresa selecionada")
+    }
+
+    const { data } = await apiClient.get(`/sales/${id}/pdf`, {
+      headers: {
+        "x-company-id": selectedCompany.id,
+      },
+      responseType: "blob",
+    })
+
+    return data
+  } catch (error: any) {
+    throw error
+  }
+}
+
+/**
+ * Exporta todas as vendas em Excel
+ */
+async function exportSalesToExcel(filters?: SaleFilters): Promise<Blob> {
+  try {
+    const selectedCompany = authApi.getSelectedCompany()
+    if (!selectedCompany) {
+      throw new Error("Nenhuma empresa selecionada")
+    }
+
+    const { data } = await apiClient.get("/sales/export/excel", {
+      params: filters,
+      headers: {
+        "x-company-id": selectedCompany.id,
+      },
+      responseType: "blob",
+    })
+
+    return data
+  } catch (error: any) {
+    throw error
+  }
+}
+
+/**
+ * Dashboard Statistics Interfaces
+ */
+export interface DashboardPeriod {
+  currentMonth: {
+    start: string
+    end: string
+  }
+  previousMonth: {
+    start: string
+    end: string
+  }
+}
+
+export interface DashboardMetric {
+  current: number
+  previous: number
+  change: number
+  changePercent: string
+}
+
+export interface DashboardMetrics {
+  sales: DashboardMetric
+  products: DashboardMetric
+  customers: DashboardMetric
+  averageTicket: DashboardMetric
+}
+
+export interface DashboardRecentSale {
+  id: string
+  code: string
+  customer: {
+    id: string
+    name: string
+    cpf: string | null
+    cnpj: string | null
+  }
+  totalAmount: number
+  installments: number
+  paymentMethod: {
+    id: string
+    name: string
+  }
+  confirmedAt: string
+  status: string
+}
+
+export interface DashboardTopProduct {
+  product: {
+    id: string
+    name: string
+    sku: string
+    salePrice: number
+    currentStock: number
+  }
+  quantitySold: number
+  salesCount: number
+}
+
+export interface DashboardStats {
+  period: DashboardPeriod
+  metrics: DashboardMetrics
+  recentSales: DashboardRecentSale[]
+  topProducts: DashboardTopProduct[]
+}
+
+/**
+ * Busca estatísticas consolidadas para o dashboard
+ */
+export async function getDashboardStats(): Promise<DashboardStats> {
+  try {
+    const selectedCompany = authApi.getSelectedCompany()
+    if (!selectedCompany) {
+      throw new Error("Nenhuma empresa selecionada")
+    }
+
+    const { data } = await apiClient.get<DashboardStats>("/sales/dashboard/stats", {
+      headers: {
+        "x-company-id": selectedCompany.id,
+      },
+    })
+
+    return data
+  } catch (error: any) {
+    throw error
+  }
+}
+
 // Exportar objeto API
 export const salesApi = {
   getAll: getSales,
@@ -487,15 +814,23 @@ export const salesApi = {
   approve: approveSale,
   cancel: cancelSale,
   complete: completeSale,
+  confirm: confirmSale,
+  approveCreditAnalysis: approveCreditAnalysis,
+  rejectCreditAnalysis: rejectCreditAnalysis,
+  changeStatus: changeSaleStatus,
   addItem: addSaleItem,
   updateItem: updateSaleItem,
   removeItem: removeSaleItem,
   getStatistics: getSaleStatistics,
+  getDashboardStats: getDashboardStats,
+  exportToPDF: exportSaleToPDF,
+  exportToExcel: exportSalesToExcel,
 }
 
 // Helper: Labels de status
 export const saleStatusLabels: Record<SaleStatus, string> = {
-  DRAFT: "Orçamento",
+  QUOTE: "Orçamento",
+  DRAFT: "Rascunho",
   PENDING_APPROVAL: "Aguardando Aprovação",
   APPROVED: "Aprovado",
   COMPLETED: "Concluído",
@@ -504,9 +839,10 @@ export const saleStatusLabels: Record<SaleStatus, string> = {
 
 // Helper: Cores de status
 export const saleStatusColors: Record<SaleStatus, string> = {
+  QUOTE: "bg-blue-100 text-blue-800",
   DRAFT: "bg-gray-100 text-gray-800",
   PENDING_APPROVAL: "bg-yellow-100 text-yellow-800",
-  APPROVED: "bg-blue-100 text-blue-800",
-  COMPLETED: "bg-green-100 text-green-800",
+  APPROVED: "bg-green-100 text-green-800",
+  COMPLETED: "bg-emerald-100 text-emerald-800",
   CANCELED: "bg-red-100 text-red-800",
 }
