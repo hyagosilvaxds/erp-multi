@@ -73,6 +73,34 @@ export const maskCNAE = (value: string): string => {
     .replace(/(\/\d{2})\d+?$/, '$1')
 }
 
+/**
+ * Formata valor numérico para moeda brasileira (R$ 0.000,00)
+ */
+export const formatCurrency = (value: number | string): string => {
+  const numValue = typeof value === 'string' ? parseFloat(value) : value
+  
+  if (isNaN(numValue)) return 'R$ 0,00'
+  
+  return numValue.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+}
+
+/**
+ * Aplica máscara de moeda em um input (R$ 0.000,00)
+ */
+export const maskCurrency = (value: string): string => {
+  // Remove tudo que não é dígito
+  let numValue = value.replace(/\D/g, '')
+  
+  // Converte para centavos
+  numValue = (parseInt(numValue) / 100).toFixed(2)
+  
+  // Formata
+  return formatCurrency(numValue)
+}
+
 // ==========================================
 // REMOÇÃO DE MÁSCARAS
 // ==========================================
