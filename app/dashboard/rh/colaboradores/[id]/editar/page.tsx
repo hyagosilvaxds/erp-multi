@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -21,6 +21,7 @@ import Link from "next/link"
 import { useToast } from '@/hooks/use-toast'
 import {
   employeesApi,
+  type Employee,
   type Gender,
   type MaritalStatus,
   type ContractType,
@@ -43,11 +44,14 @@ import {
   searchCEP,
 } from '@/lib/masks'
 
-export default function NovoColaboradorPage() {
+export default function EditarColaboradorPage() {
+  const params = useParams()
   const router = useRouter()
   const { toast } = useToast()
+  const employeeId = params.id as string
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [loadingCEP, setLoadingCEP] = useState(false)
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
   const [positions, setPositions] = useState<Position[]>([])
@@ -123,7 +127,8 @@ export default function NovoColaboradorPage() {
     loadCostCenters()
     loadPositions()
     loadDepartments()
-  }, [])
+    loadEmployee()
+  }, [employeeId])
 
   const loadCostCenters = async () => {
     try {
@@ -161,6 +166,88 @@ export default function NovoColaboradorPage() {
         description: error.response?.data?.message || 'Não foi possível carregar os departamentos.',
         variant: 'destructive',
       })
+    }
+  }
+
+  const loadEmployee = async () => {
+    try {
+      setLoading(true)
+      const employee = await employeesApi.getById(employeeId)
+      
+      // Dados Pessoais
+      setName(employee.name)
+      setCpf(maskCPF(employee.cpf))
+      setRg(employee.rg || '')
+      setBirthDate(employee.birthDate || '')
+      setGender(employee.gender || '')
+      setMaritalStatus(employee.maritalStatus || '')
+      setEmail(employee.email || '')
+      setPhone(employee.phone ? maskPhone(employee.phone) : '')
+      setMobile(employee.mobile ? maskPhone(employee.mobile) : '')
+
+      // Endereço
+      setZipCode(employee.zipCode ? maskCEP(employee.zipCode) : '')
+      setStreet(employee.street || '')
+      setNumber(employee.number || '')
+      setComplement(employee.complement || '')
+      setNeighborhood(employee.neighborhood || '')
+      setCity(employee.city || '')
+      setState(employee.state || '')
+
+      // Dados Profissionais
+      setCostCenterId(employee.costCenterId)
+      setPositionId(employee.positionId || '')
+      setDepartmentId(employee.departmentId || '')
+      setAdmissionDate(employee.admissionDate)
+      setContractType(employee.contractType)
+      setWorkSchedule(employee.workSchedule || {
+        monday: { isWorkDay: true, startTime: '08:00', endTime: '18:00', breakStartTime: '12:00', breakEndTime: '13:00' },
+        tuesday: { isWorkDay: true, startTime: '08:00', endTime: '18:00', breakStartTime: '12:00', breakEndTime: '13:00' },
+        wednesday: { isWorkDay: true, startTime: '08:00', endTime: '18:00', breakStartTime: '12:00', breakEndTime: '13:00' },
+        thursday: { isWorkDay: true, startTime: '08:00', endTime: '18:00', breakStartTime: '12:00', breakEndTime: '13:00' },
+        friday: { isWorkDay: true, startTime: '08:00', endTime: '18:00', breakStartTime: '12:00', breakEndTime: '13:00' },
+        saturday: { isWorkDay: false },
+        sunday: { isWorkDay: false },
+        weeklyHours: 44,
+        generalNotes: '',
+      })
+      setSalary(employee.salary)
+
+      // Dados Bancários
+      setBankCode(employee.bankCode || '')
+      setBankName(employee.bankName || '')
+      setAgency(employee.agency || '')
+      setAccount(employee.account || '')
+      setAccountType(employee.accountType || '')
+      setPixKey(employee.pixKey || '')
+
+      // Dados da Empresa (PJ)
+      setCompanyDocument(employee.companyDocument ? maskCNPJ(employee.companyDocument) : '')
+      setCompanyName(employee.companyName || '')
+      setCompanyTradeName(employee.companyTradeName || '')
+      setCompanyStateRegistration(employee.companyStateRegistration || '')
+      setCompanyMunicipalRegistration(employee.companyMunicipalRegistration || '')
+      setCompanyEmail(employee.companyEmail || '')
+      setCompanyPhone(employee.companyPhone ? maskPhone(employee.companyPhone) : '')
+      setCompanyZipCode(employee.companyZipCode ? maskCEP(employee.companyZipCode) : '')
+      setCompanyStreet(employee.companyStreet || '')
+      setCompanyNumber(employee.companyNumber || '')
+      setCompanyComplement(employee.companyComplement || '')
+      setCompanyNeighborhood(employee.companyNeighborhood || '')
+      setCompanyCity(employee.companyCity || '')
+      setCompanyState(employee.companyState || '')
+
+      // Outros
+      setNotes(employee.notes || '')
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao carregar colaborador',
+        description: error.response?.data?.message || 'Não foi possível carregar os dados do colaborador.',
+        variant: 'destructive',
+      })
+      router.push('/dashboard/rh/colaboradores')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -320,7 +407,7 @@ export default function NovoColaboradorPage() {
     }
 
     try {
-      setLoading(true)
+      setSaving(true)
 
       const data = {
         costCenterId,
@@ -370,23 +457,36 @@ export default function NovoColaboradorPage() {
         notes: notes || undefined,
       }
 
-      await employeesApi.create(data)
+      await employeesApi.update(employeeId, data)
 
       toast({
-        title: 'Colaborador cadastrado',
-        description: 'O colaborador foi cadastrado com sucesso.',
+        title: 'Colaborador atualizado',
+        description: 'Os dados do colaborador foram atualizados com sucesso.',
       })
 
-      router.push('/dashboard/rh/colaboradores')
+      router.push(`/dashboard/rh/colaboradores/${employeeId}`)
     } catch (error: any) {
       toast({
-        title: 'Erro ao cadastrar colaborador',
-        description: error.response?.data?.message || 'Não foi possível cadastrar o colaborador.',
+        title: 'Erro ao atualizar colaborador',
+        description: error.response?.data?.message || 'Não foi possível atualizar o colaborador.',
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <DashboardLayout userRole="company">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Carregando...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
   }
 
   return (
@@ -397,22 +497,22 @@ export default function NovoColaboradorPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button asChild variant="ghost" size="icon" type="button">
-                <Link href="/dashboard/rh/colaboradores">
+                <Link href={`/dashboard/rh/colaboradores/${employeeId}`}>
                   <ArrowLeft className="h-4 w-4" />
                 </Link>
               </Button>
               <div>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground">Novo Colaborador</h1>
-                <p className="text-muted-foreground">Cadastrar novo colaborador</p>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground">Editar Colaborador</h1>
+                <p className="text-muted-foreground">Atualizar dados do colaborador</p>
               </div>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" asChild type="button">
-                <Link href="/dashboard/rh/colaboradores">Cancelar</Link>
+                <Link href={`/dashboard/rh/colaboradores/${employeeId}`}>Cancelar</Link>
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={saving}>
                 <Save className="mr-2 h-4 w-4" />
-                {loading ? 'Salvando...' : 'Salvar Colaborador'}
+                {saving ? 'Salvando...' : 'Salvar Alterações'}
               </Button>
             </div>
           </div>
@@ -421,7 +521,7 @@ export default function NovoColaboradorPage() {
           <Card>
             <CardHeader>
               <CardTitle>Informações do Colaborador</CardTitle>
-              <CardDescription>Preencha os dados do novo colaborador</CardDescription>
+              <CardDescription>Atualize os dados do colaborador</CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="pessoais" className="w-full">
@@ -511,7 +611,7 @@ export default function NovoColaboradorPage() {
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="email@exemplo.com"
+                        placeholder="exemplo@email.com"
                       />
                     </div>
                     <div className="space-y-2">
@@ -538,7 +638,7 @@ export default function NovoColaboradorPage() {
                 </TabsContent>
 
                 <TabsContent value="endereco" className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="zipCode">CEP</Label>
                       <Input
@@ -550,13 +650,14 @@ export default function NovoColaboradorPage() {
                         disabled={loadingCEP}
                       />
                     </div>
-                    <div className="space-y-2 md:col-span-2">
+                    <div className="space-y-2">
                       <Label htmlFor="street">Logradouro</Label>
                       <Input
                         id="street"
                         value={street}
                         onChange={(e) => setStreet(e.target.value)}
-                        placeholder="Digite o endereço"
+                        placeholder="Digite o logradouro"
+                        disabled={loadingCEP}
                       />
                     </div>
                     <div className="space-y-2">
@@ -565,7 +666,7 @@ export default function NovoColaboradorPage() {
                         id="number"
                         value={number}
                         onChange={(e) => setNumber(e.target.value)}
-                        placeholder="Nº"
+                        placeholder="Digite o número"
                       />
                     </div>
                     <div className="space-y-2">
@@ -574,7 +675,7 @@ export default function NovoColaboradorPage() {
                         id="complement"
                         value={complement}
                         onChange={(e) => setComplement(e.target.value)}
-                        placeholder="Apto, sala, etc"
+                        placeholder="Apto, sala, bloco, etc"
                       />
                     </div>
                     <div className="space-y-2">
@@ -584,6 +685,7 @@ export default function NovoColaboradorPage() {
                         value={neighborhood}
                         onChange={(e) => setNeighborhood(e.target.value)}
                         placeholder="Digite o bairro"
+                        disabled={loadingCEP}
                       />
                     </div>
                     <div className="space-y-2">
@@ -593,6 +695,7 @@ export default function NovoColaboradorPage() {
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
                         placeholder="Digite a cidade"
+                        disabled={loadingCEP}
                       />
                     </div>
                     <div className="space-y-2">
@@ -600,9 +703,10 @@ export default function NovoColaboradorPage() {
                       <Input
                         id="state"
                         value={state}
-                        onChange={(e) => setState(e.target.value.toUpperCase())}
+                        onChange={(e) => setState(e.target.value)}
                         placeholder="UF"
                         maxLength={2}
+                        disabled={loadingCEP}
                       />
                     </div>
                   </div>
@@ -612,21 +716,21 @@ export default function NovoColaboradorPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="costCenterId">Centro de Custo *</Label>
-                      <Select value={costCenterId} onValueChange={setCostCenterId} required>
+                      <Select value={costCenterId} onValueChange={setCostCenterId}>
                         <SelectTrigger id="costCenterId">
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
                         <SelectContent>
                           {costCenters
                             .filter(cc => cc.ativo)
-                            .map((cc) => (
-                              <SelectItem key={cc.id} value={cc.id}>
+                            .map((center) => (
+                              <SelectItem key={center.id} value={center.id}>
                                 <div className="flex items-center gap-2">
-                                  <span className="font-mono text-xs">{cc.codigo}</span>
-                                  <span>{cc.nome}</span>
-                                  {cc.nivel > 1 && (
+                                  <span className="font-mono text-xs">{center.codigo}</span>
+                                  <span>{center.nome}</span>
+                                  {center.nivel > 1 && (
                                     <span className="text-xs text-muted-foreground">
-                                      (Nível {cc.nivel})
+                                      (Nível {center.nivel})
                                     </span>
                                   )}
                                 </div>
@@ -637,7 +741,7 @@ export default function NovoColaboradorPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="positionId">Cargo *</Label>
-                      <Select value={positionId} onValueChange={setPositionId} required>
+                      <Select value={positionId} onValueChange={setPositionId}>
                         <SelectTrigger id="positionId">
                           <SelectValue placeholder="Selecione o cargo" />
                         </SelectTrigger>
@@ -655,7 +759,7 @@ export default function NovoColaboradorPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="departmentId">Departamento *</Label>
-                      <Select value={departmentId} onValueChange={setDepartmentId} required>
+                      <Select value={departmentId} onValueChange={setDepartmentId}>
                         <SelectTrigger id="departmentId">
                           <SelectValue placeholder="Selecione o departamento" />
                         </SelectTrigger>
@@ -683,7 +787,7 @@ export default function NovoColaboradorPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="contractType">Tipo de Contrato *</Label>
-                      <Select value={contractType} onValueChange={(value: ContractType) => setContractType(value)} required>
+                      <Select value={contractType} onValueChange={(value: ContractType) => setContractType(value)}>
                         <SelectTrigger id="contractType">
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>

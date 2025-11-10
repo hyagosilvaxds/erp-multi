@@ -53,11 +53,11 @@ const movementTypeLabels: Record<StockMovementType, string> = {
   TRANSFER: 'Transferência',
 }
 
-const movementTypeColors: Record<StockMovementType, 'default' | 'success' | 'destructive' | 'warning' | 'secondary'> = {
-  ENTRY: 'success',
+const movementTypeColors: Record<StockMovementType, 'default' | 'destructive' | 'secondary' | 'outline'> = {
+  ENTRY: 'default',
   EXIT: 'destructive',
-  ADJUSTMENT: 'warning',
-  RETURN: 'secondary',
+  ADJUSTMENT: 'secondary',
+  RETURN: 'outline',
   LOSS: 'destructive',
   TRANSFER: 'default',
 }
@@ -210,32 +210,61 @@ export default function ProductMovementsPage() {
         </div>
 
         {/* Resumo do Produto */}
-        {product && (
+        {stockStats && (
           <Card>
             <CardHeader>
-              <CardTitle>Resumo do Produto</CardTitle>
+              <CardTitle>Estatísticas de Estoque</CardTitle>
+              <CardDescription>{stockStats.productName}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Estoque Total</p>
-                  <p className="text-2xl font-bold">{product.totalStock || 0}</p>
+                  <p className="text-sm text-muted-foreground">Estoque Atual</p>
+                  <p className="text-2xl font-bold">{stockStats.stats.currentStock}</p>
+                  {stockStats.stats.stockPercentage != null && (
+                    <p className="text-xs text-muted-foreground">
+                      {stockStats.stats.stockPercentage.toFixed(1)}% do máximo
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Estoque Mínimo</p>
-                  <p className="text-2xl font-bold">{product.minimumStock || 0}</p>
+                  <p className="text-2xl font-bold">{stockStats.stats.minStock}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Estoque Máximo</p>
-                  <p className="text-2xl font-bold">{product.maximumStock || 0}</p>
+                  <p className="text-2xl font-bold">{stockStats.stats.maxStock}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Status</p>
-                  <Badge variant={(product.totalStock || 0) > 0 ? 'success' : 'destructive'}>
-                    {(product.totalStock || 0) > 0 ? 'Em Estoque' : 'Sem Estoque'}
-                  </Badge>
+                  {stockStats.stats.needsRestock ? (
+                    <Badge variant="destructive">Necessita Reposição</Badge>
+                  ) : stockStats.stats.isOverstocked ? (
+                    <Badge variant="secondary">Estoque Excedente</Badge>
+                  ) : (
+                    <Badge variant="default">Normal</Badge>
+                  )}
                 </div>
               </div>
+              
+              {/* Estoque por Localização */}
+              {stockStats.stockByLocation.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="text-sm font-medium mb-3">Estoque por Localização</h4>
+                  <div className="grid gap-2">
+                    {stockStats.stockByLocation.map((loc) => (
+                      <div key={loc.locationId} className="flex items-center justify-between p-2 border rounded">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">{loc.locationName}</span>
+                          <span className="text-xs text-muted-foreground">({loc.locationCode})</span>
+                        </div>
+                        <span className="text-sm font-bold">{loc.quantity} {stockStats.unit?.abbreviation || 'UN'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -346,7 +375,7 @@ export default function ProductMovementsPage() {
                         <TableHead className="text-right">Novo Estoque</TableHead>
                         <TableHead>Local</TableHead>
                         <TableHead>Motivo</TableHead>
-                        <TableHead>Usuário</TableHead>
+                        
                         <TableHead>Documento</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -390,12 +419,7 @@ export default function ProductMovementsPage() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <User className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm">{movement.user?.name || '-'}</span>
-                            </div>
-                          </TableCell>
+                          
                           <TableCell>
                             {movement.document ? (
                               <Button

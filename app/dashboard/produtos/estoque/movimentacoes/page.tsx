@@ -339,7 +339,7 @@ export default function StockMovementsPage() {
                       <TableHead>Estoque Novo</TableHead>
                       <TableHead>Local</TableHead>
                       <TableHead>Motivo</TableHead>
-                      <TableHead>Usuário</TableHead>
+                      
                       <TableHead>Documento</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -376,7 +376,7 @@ export default function StockMovementsPage() {
                         <TableCell className="max-w-xs truncate">
                           {movement.reason || '-'}
                         </TableCell>
-                        <TableCell>{movement.user?.name || '-'}</TableCell>
+                       
                         <TableCell>
                           {movement.document ? (
                             <DocumentDownloadButton

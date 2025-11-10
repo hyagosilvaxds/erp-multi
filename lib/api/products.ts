@@ -629,7 +629,7 @@ export interface StockParams {
   outOfStock?: boolean
 }
 
-export interface StockStats {
+export interface ProductStockStatistics {
   currentStock: number
   minStock: number
   maxStock: number
@@ -639,7 +639,7 @@ export interface StockStats {
   stockPercentage: number
 }
 
-export interface StockByLocation {
+export interface StockLocationQuantity {
   locationId: string
   locationName: string
   locationCode: string
@@ -652,8 +652,8 @@ export interface ProductStockStats {
   sku?: string
   barcode?: string
   manageStock: boolean
-  stats: StockStats
-  stockByLocation: StockByLocation[]
+  stats: ProductStockStatistics
+  stockByLocation: StockLocationQuantity[]
   unit?: {
     id: string
     name: string
@@ -1254,7 +1254,7 @@ export const productsApi = {
   },
 
   /**
-   * Obtém estatísticas de estoque do produto
+   * Obtém estatísticas de estoque de um produto
    */
   getStockStats: async (productId: string): Promise<ProductStockStats> => {
     const companyId = getCompanyId()

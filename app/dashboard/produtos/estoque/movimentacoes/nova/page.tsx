@@ -31,6 +31,7 @@ import {
   type Product,
   type StockMovementType,
   type CreateStockMovementRequest,
+  type ProductStockStats,
 } from '@/lib/api/products'
 import { documentsApi, type Document } from '@/lib/api/documents'
 
@@ -69,6 +70,7 @@ export default function NewStockMovementPage() {
 
   const [locations, setLocations] = useState<StockLocation[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [stockStats, setStockStats] = useState<ProductStockStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -136,17 +138,26 @@ export default function NewStockMovementPage() {
     }
   }
 
-  const handleProductChange = (value: string) => {
+  const handleProductChange = async (value: string) => {
     setProductId(value)
     const product = products.find((p) => p.id === value)
     setSelectedProduct(product || null)
 
-    // Busca estoque atual do produto
-    if (product && product.stocksByLocation) {
-      // Se houver apenas um local com estoque, seleciona automaticamente
-      if (product.stocksByLocation.length === 1) {
-        setLocationId(product.stocksByLocation[0].locationId)
+    // Carregar estatísticas do produto
+    if (product) {
+      try {
+        const stats = await productsApi.getStockStats(product.id)
+        setStockStats(stats)
+        
+        // Se houver apenas um local com estoque, seleciona automaticamente
+        if (stats.stockByLocation.length === 1) {
+          setLocationId(stats.stockByLocation[0].locationId)
+        }
+      } catch (error) {
+        console.error('Erro ao carregar estatísticas:', error)
       }
+    } else {
+      setStockStats(null)
     }
   }
 
@@ -255,6 +266,32 @@ export default function NewStockMovementPage() {
   const handleSubmit = async () => {
     if (!validateForm()) return
 
+    // Validar estoque máximo para entradas
+    if (stockStats && (type === 'ENTRY' || type === 'RETURN')) {
+      const newStock = getNewStock()
+      if (newStock > stockStats.stats.maxStock) {
+        toast({
+          title: 'Estoque excederá o máximo',
+          description: `O estoque atual é ${stockStats.stats.currentStock} e o máximo permitido é ${stockStats.stats.maxStock}. A movimentação resultaria em ${newStock} unidades.`,
+          variant: 'destructive',
+        })
+        return
+      }
+    }
+
+    // Validar estoque negativo para saídas
+    if (stockStats && (type === 'EXIT' || type === 'LOSS')) {
+      const newStock = getNewStock()
+      if (newStock < 0) {
+        toast({
+          title: 'Estoque insuficiente',
+          description: `O estoque atual é ${stockStats.stats.currentStock}. Não é possível remover ${quantity} unidades.`,
+          variant: 'destructive',
+        })
+        return
+      }
+    }
+
     try {
       setSaving(true)
 
@@ -288,12 +325,8 @@ export default function NewStockMovementPage() {
   }
 
   const getCurrentStock = () => {
-    if (!selectedProduct || !locationId) return 0
-    
-    const locationStock = selectedProduct.stocksByLocation?.find(
-      (s) => s.locationId === locationId
-    )
-    return locationStock ? parseFloat(locationStock.quantity) : 0
+    if (!stockStats) return 0
+    return stockStats.stats.currentStock
   }
 
   const getNewStock = () => {
@@ -395,6 +428,81 @@ export default function NewStockMovementPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Estatísticas do Produto */}
+            {stockStats && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Estoque Atual</CardTitle>
+                  <CardDescription>{stockStats.productName}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Estoque Atual</p>
+                      <p className="text-2xl font-bold">{stockStats.stats.currentStock}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Mínimo</p>
+                      <p className="text-2xl font-bold">{stockStats.stats.minStock}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Máximo</p>
+                      <p className="text-2xl font-bold">{stockStats.stats.maxStock}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Status</p>
+                      {stockStats.stats.needsRestock ? (
+                        <Badge variant="destructive">Baixo</Badge>
+                      ) : stockStats.stats.isOverstocked ? (
+                        <Badge variant="secondary">Excedente</Badge>
+                      ) : (
+                        <Badge variant="default">Normal</Badge>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Preview do novo estoque */}
+                  {quantity > 0 && locationId && (
+                    <div className="mt-4 p-4 border rounded-lg bg-muted/50">
+                      <p className="text-sm font-medium mb-2">Preview da Movimentação</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Estoque Atual:</span>
+                        <span className="font-medium">{getCurrentStock()}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">
+                          {type === 'ENTRY' || type === 'RETURN' ? 'Adicionar:' : 
+                           type === 'EXIT' || type === 'LOSS' ? 'Remover:' : 'Ajustar para:'}
+                        </span>
+                        <span className="font-medium">{quantity}</span>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t mt-2">
+                        <span className="text-sm font-medium">Novo Estoque:</span>
+                        <span className={`text-lg font-bold ${
+                          getNewStock() > stockStats.stats.maxStock ? 'text-red-600' :
+                          getNewStock() < 0 ? 'text-red-600' :
+                          getNewStock() < stockStats.stats.minStock ? 'text-yellow-600' :
+                          'text-green-600'
+                        }`}>
+                          {getNewStock()}
+                        </span>
+                      </div>
+                      {getNewStock() > stockStats.stats.maxStock && (
+                        <p className="text-xs text-red-600 mt-2">
+                          ⚠️ Atenção: O estoque excederá o máximo permitido!
+                        </p>
+                      )}
+                      {getNewStock() < 0 && (
+                        <p className="text-xs text-red-600 mt-2">
+                          ⚠️ Atenção: Estoque insuficiente para esta operação!
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Tipo e Quantidade */}
             <Card>

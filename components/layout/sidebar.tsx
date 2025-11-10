@@ -98,8 +98,11 @@ const companyMenuItems = [
     submenu: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/rh" },
       { icon: Users, label: "Colaboradores", href: "/dashboard/rh/colaboradores" },
+      { icon: Building2, label: "Departamentos", href: "/dashboard/rh/departamentos" },
+      { icon: UserPlus, label: "Cargos", href: "/dashboard/rh/cargos" },
       { icon: DollarSign, label: "Proventos & Descontos", href: "/dashboard/rh/proventos-descontos" },
       { icon: FileText, label: "Folha de Pagamento", href: "/dashboard/rh/folha" },
+      { icon: Receipt, label: "Tabelas Fiscais", href: "/dashboard/rh/tabelas-fiscais" },
     ],
   },
   {
