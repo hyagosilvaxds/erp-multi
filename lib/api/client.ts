@@ -2,7 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'ax
 
 // Criar instância do axios
 export const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000',
+  baseURL: process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back.otimizeagenda.com',
   headers: {
     'Content-Type': 'application/json',
   },
