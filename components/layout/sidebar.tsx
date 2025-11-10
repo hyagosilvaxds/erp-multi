@@ -112,8 +112,8 @@ const companyMenuItems = [
     module: "juridico",
     submenu: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/juridico" },
-      { icon: FileText, label: "Contratos", href: "/dashboard/juridico/contratos" },
-      { icon: Shield, label: "Processos", href: "/dashboard/juridico/processos" },
+      { icon: FileText, label: "Documentos", href: "/dashboard/juridico/documentos" },
+      { icon: FolderOpen, label: "Categorias", href: "/dashboard/juridico/categorias" },
     ],
   },
   {

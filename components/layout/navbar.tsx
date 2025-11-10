@@ -132,7 +132,7 @@ export function Navbar({ sidebarCollapsed = false, userRole = "company" }: Navba
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
 
-        {/* Notifications */}
+        {/* Notifications 
         {!isAdminRoute && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -173,7 +173,7 @@ export function Navbar({ sidebarCollapsed = false, userRole = "company" }: Navba
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        )}
+        )}*/}
       </div>
     </header>
   )

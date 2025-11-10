@@ -28,8 +28,7 @@ export default function EditarINSSPage() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [referenceYear, setReferenceYear] = useState(new Date().getFullYear())
-  const [referenceMonth, setReferenceMonth] = useState(new Date().getMonth() + 1)
+  const [referenceYear, setReferenceYear] = useState<number>(new Date().getFullYear())
   const [active, setActive] = useState(true)
   const [brackets, setBrackets] = useState<INSSBracket[]>([])
 
@@ -41,10 +40,17 @@ export default function EditarINSSPage() {
     try {
       setLoading(true)
       const table = await inssTablesApi.getById(tableId)
-      setReferenceYear(table.referenceYear)
-      setReferenceMonth(table.referenceMonth)
+      setReferenceYear(table.year)
       setActive(table.active)
-      setBrackets(table.brackets)
+      
+      // Converter ranges para brackets
+      const bracketsFromRanges = table.ranges.map(range => ({
+        upTo: range.maxValue,
+        employeeRate: range.employeeRate,
+        employerRate: range.employerRate,
+      }))
+      
+      setBrackets(bracketsFromRanges)
     } catch (error: any) {
       toast({
         title: 'Erro ao carregar tabela',
@@ -98,8 +104,6 @@ export default function EditarINSSPage() {
       setSaving(true)
 
       await inssTablesApi.update(tableId, {
-        referenceYear,
-        referenceMonth,
         active,
         brackets,
       })
@@ -172,46 +176,14 @@ export default function EditarINSSPage() {
             <CardHeader>
               <CardTitle>Informações da Tabela</CardTitle>
               <CardDescription>
-                Defina o período de referência e status da tabela
+                Ano de referência e status da tabela (ano não pode ser alterado)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="referenceYear">Ano de Referência *</Label>
-                  <Select
-                    value={referenceYear.toString()}
-                    onValueChange={(value) => setReferenceYear(parseInt(value))}
-                  >
-                    <SelectTrigger id="referenceYear">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {years.map((year) => (
-                        <SelectItem key={year} value={year.toString()}>
-                          {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="referenceMonth">Mês de Referência *</Label>
-                  <Select
-                    value={referenceMonth.toString()}
-                    onValueChange={(value) => setReferenceMonth(parseInt(value))}
-                  >
-                    <SelectTrigger id="referenceMonth">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map((month) => (
-                        <SelectItem key={month.value} value={month.value.toString()}>
-                          {month.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Ano de Referência</Label>
+                  <Input value={referenceYear} disabled />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="active">Status</Label>

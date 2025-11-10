@@ -227,11 +227,11 @@ export default function TabelasFiscaisPage() {
                       {inssTables.map((table) => (
                         <TableRow key={table.id}>
                           <TableCell className="font-medium">
-                            {formatMonth(table.referenceMonth)}/{table.referenceYear}
+                            {table.year}
                           </TableCell>
                           <TableCell>
                             <span className="text-sm text-muted-foreground">
-                              {table.brackets.length} faixas configuradas
+                              {table.ranges?.length || 0} faixas configuradas
                             </span>
                           </TableCell>
                           <TableCell>
@@ -279,7 +279,7 @@ export default function TabelasFiscaisPage() {
                   <div>
                     <CardTitle>Tabelas de FGTS</CardTitle>
                     <CardDescription>
-                      Alíquotas mensais e de rescisão por categoria de trabalhador
+                      Alíquotas mensais e de rescisão por cargo
                     </CardDescription>
                   </div>
                   <Link href="/dashboard/rh/tabelas-fiscais/fgts/nova">
@@ -313,7 +313,7 @@ export default function TabelasFiscaisPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Referência</TableHead>
-                        <TableHead>Categorias</TableHead>
+                        <TableHead>Cargos</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Criação</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
@@ -323,11 +323,11 @@ export default function TabelasFiscaisPage() {
                       {fgtsTables.map((table) => (
                         <TableRow key={table.id}>
                           <TableCell className="font-medium">
-                            {formatMonth(table.referenceMonth)}/{table.referenceYear}
+                            {table.year}
                           </TableCell>
                           <TableCell>
                             <span className="text-sm text-muted-foreground">
-                              {table.rates.length} categorias configuradas
+                              {table.rates?.length || 0} cargos configurados
                             </span>
                           </TableCell>
                           <TableCell>
@@ -420,16 +420,16 @@ export default function TabelasFiscaisPage() {
                       {irrfTables.map((table) => (
                         <TableRow key={table.id}>
                           <TableCell className="font-medium">
-                            {formatMonth(table.referenceMonth)}/{table.referenceYear}
+                            {table.year}
                           </TableCell>
                           <TableCell>
                             <span className="text-sm text-muted-foreground">
-                              {table.brackets.length} faixas configuradas
+                              {table.ranges?.length || 0} faixas configuradas
                             </span>
                           </TableCell>
                           <TableCell>
                             <span className="text-sm text-muted-foreground">
-                              R$ {table.dependentDeduction.toFixed(2)}
+                              R$ {Number(table.dependentDeduction || 0).toFixed(2)}
                             </span>
                           </TableCell>
                           <TableCell>

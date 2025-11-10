@@ -18,7 +18,7 @@ import {
 import { ArrowLeft, Plus, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { useToast } from '@/hooks/use-toast'
-import { irrfTablesApi, type IRRFBracket } from '@/lib/api/tax-tables'
+import { irrfTablesApi, type IRRFRange } from '@/lib/api/tax-tables'
 
 export default function NovaIRRFPage() {
   const router = useRouter()
@@ -26,35 +26,34 @@ export default function NovaIRRFPage() {
 
   const [loading, setLoading] = useState(false)
   const [referenceYear, setReferenceYear] = useState(new Date().getFullYear())
-  const [referenceMonth, setReferenceMonth] = useState(new Date().getMonth() + 1)
   const [active, setActive] = useState(true)
   const [dependentDeduction, setDependentDeduction] = useState(189.59)
-  const [brackets, setBrackets] = useState<IRRFBracket[]>([
-    { upTo: 2259.20, rate: 0.0, deduction: 0.0 },
-    { upTo: 2826.65, rate: 7.5, deduction: 169.44 },
-    { upTo: 3751.05, rate: 15.0, deduction: 381.44 },
-    { upTo: 4664.68, rate: 22.5, deduction: 662.77 },
-    { upTo: null, rate: 27.5, deduction: 896.00 },
+  const [ranges, setRanges] = useState<IRRFRange[]>([
+    { minValue: 0, maxValue: 2259.20, rate: 0.0, deduction: 0.0 },
+    { minValue: 2259.21, maxValue: 2826.65, rate: 7.5, deduction: 169.44 },
+    { minValue: 2826.66, maxValue: 3751.05, rate: 15.0, deduction: 381.44 },
+    { minValue: 3751.06, maxValue: 4664.68, rate: 22.5, deduction: 662.77 },
+    { minValue: 4664.69, maxValue: null, rate: 27.5, deduction: 896.00 },
   ])
 
-  const handleAddBracket = () => {
-    setBrackets([...brackets, { upTo: 0, rate: 0, deduction: 0 }])
+  const handleAddRange = () => {
+    setRanges([...ranges, { minValue: 0, maxValue: 0, rate: 0, deduction: 0 }])
   }
 
-  const handleRemoveBracket = (index: number) => {
-    setBrackets(brackets.filter((_, i) => i !== index))
+  const handleRemoveRange = (index: number) => {
+    setRanges(ranges.filter((_, i) => i !== index))
   }
 
-  const handleBracketChange = (index: number, field: keyof IRRFBracket, value: number | null) => {
-    const newBrackets = [...brackets]
-    newBrackets[index] = { ...newBrackets[index], [field]: value }
-    setBrackets(newBrackets)
+  const handleRangeChange = (index: number, field: keyof IRRFRange, value: number | null) => {
+    const newRanges = [...ranges]
+    newRanges[index] = { ...newRanges[index], [field]: value }
+    setRanges(newRanges)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (brackets.length === 0) {
+    if (ranges.length === 0) {
       toast({
         title: 'Campos obrigatórios',
         description: 'Adicione pelo menos uma faixa de IRRF.',
@@ -67,10 +66,9 @@ export default function NovaIRRFPage() {
       setLoading(true)
 
       await irrfTablesApi.create({
-        referenceYear,
-        referenceMonth,
+        year: referenceYear,
         active,
-        brackets,
+        ranges,
         dependentDeduction,
       })
 
@@ -130,11 +128,11 @@ export default function NovaIRRFPage() {
             <CardHeader>
               <CardTitle>Informações da Tabela</CardTitle>
               <CardDescription>
-                Defina o período de referência e status da tabela
+                Defina o ano de referência, dedução por dependente e status da tabela
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="referenceYear">Ano de Referência *</Label>
                   <Select
@@ -148,24 +146,6 @@ export default function NovaIRRFPage() {
                       {years.map((year) => (
                         <SelectItem key={year} value={year.toString()}>
                           {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="referenceMonth">Mês de Referência *</Label>
-                  <Select
-                    value={referenceMonth.toString()}
-                    onValueChange={(value) => setReferenceMonth(parseInt(value))}
-                  >
-                    <SelectTrigger id="referenceMonth">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map((month) => (
-                        <SelectItem key={month.value} value={month.value.toString()}>
-                          {month.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -208,34 +188,45 @@ export default function NovaIRRFPage() {
                     Configure as faixas progressivas, alíquotas e deduções
                   </CardDescription>
                 </div>
-                <Button type="button" variant="outline" onClick={handleAddBracket}>
+                <Button type="button" variant="outline" onClick={handleAddRange}>
                   <Plus className="h-4 w-4 mr-2" />
                   Adicionar Faixa
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {brackets.length === 0 ? (
+              {ranges.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Nenhuma faixa adicionada. Clique em "Adicionar Faixa" para começar.
                 </div>
               ) : (
-                brackets.map((bracket, index) => (
+                ranges.map((range, index) => (
                   <Card key={index}>
                     <CardContent className="pt-6">
                       <div className="flex items-start gap-4">
-                        <div className="flex-1 grid gap-4 md:grid-cols-3">
+                        <div className="flex-1 grid gap-4 md:grid-cols-4">
+                          <div className="space-y-2">
+                            <Label>De (R$) *</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={range.minValue}
+                              onChange={(e) => handleRangeChange(index, 'minValue', parseFloat(e.target.value))}
+                              placeholder="0.00"
+                              required
+                            />
+                          </div>
                           <div className="space-y-2">
                             <Label>
-                              Até (R$) {index === brackets.length - 1 && '(null = sem limite)'}
+                              Até (R$) {index === ranges.length - 1 && '(null = sem limite)'}
                             </Label>
                             <Input
                               type="number"
                               step="0.01"
-                              value={bracket.upTo === null ? '' : bracket.upTo}
+                              value={range.maxValue === null ? '' : range.maxValue}
                               onChange={(e) => {
                                 const value = e.target.value === '' ? null : parseFloat(e.target.value)
-                                handleBracketChange(index, 'upTo', value)
+                                handleRangeChange(index, 'maxValue', value)
                               }}
                               placeholder="Deixe vazio para sem limite"
                             />
@@ -245,8 +236,8 @@ export default function NovaIRRFPage() {
                             <Input
                               type="number"
                               step="0.01"
-                              value={bracket.rate}
-                              onChange={(e) => handleBracketChange(index, 'rate', parseFloat(e.target.value))}
+                              value={range.rate}
+                              onChange={(e) => handleRangeChange(index, 'rate', parseFloat(e.target.value))}
                               placeholder="0.00"
                               required
                             />
@@ -256,8 +247,8 @@ export default function NovaIRRFPage() {
                             <Input
                               type="number"
                               step="0.01"
-                              value={bracket.deduction}
-                              onChange={(e) => handleBracketChange(index, 'deduction', parseFloat(e.target.value))}
+                              value={range.deduction}
+                              onChange={(e) => handleRangeChange(index, 'deduction', parseFloat(e.target.value))}
                               placeholder="0.00"
                               required
                             />
@@ -267,7 +258,7 @@ export default function NovaIRRFPage() {
                           type="button"
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleRemoveBracket(index)}
+                          onClick={() => handleRemoveRange(index)}
                           className="mt-8"
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />

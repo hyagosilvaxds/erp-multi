@@ -5,6 +5,14 @@ import { authApi } from './auth'
 // TYPES - INSS
 // ==========================================
 
+export interface INSSRange {
+  id?: string
+  minValue: number
+  maxValue: number
+  employeeRate: number
+  employerRate: number
+}
+
 export interface INSSBracket {
   upTo: number
   employeeRate: number
@@ -14,46 +22,48 @@ export interface INSSBracket {
 export interface INSSTable {
   id: string
   companyId: string
-  referenceYear: number
-  referenceMonth: number
+  year: number
   active: boolean
-  brackets: INSSBracket[]
+  ranges: INSSRange[]
   createdAt: string
   updatedAt: string
 }
 
 export interface CreateINSSTableRequest {
-  referenceYear: number
-  referenceMonth: number
-  active: boolean
-  brackets: INSSBracket[]
+  year?: number
+  referenceYear?: number
+  active?: boolean
+  brackets?: INSSBracket[]
+  ranges?: INSSRange[]
 }
 
-export interface UpdateINSSTableRequest extends Partial<CreateINSSTableRequest> {}
+export interface UpdateINSSTableRequest {
+  active?: boolean
+  brackets?: INSSBracket[]
+  ranges?: INSSRange[]
+}
 
 export interface ListINSSTablesParams {
   active?: boolean
   year?: number
-  month?: number
 }
 
 // ==========================================
 // TYPES - FGTS
 // ==========================================
 
-export type FGTSCategory = 'CLT' | 'APRENDIZ' | 'DOMESTICO'
-
 export interface FGTSRate {
-  category: FGTSCategory
+  positionId: string
+  positionName?: string
+  positionCode?: string
   monthlyRate: number
-  rescissionRate: number
+  terminationRate: number
 }
 
 export interface FGTSTable {
   id: string
   companyId: string
-  referenceYear: number
-  referenceMonth: number
+  year: number
   active: boolean
   rates: FGTSRate[]
   createdAt: string
@@ -61,26 +71,29 @@ export interface FGTSTable {
 }
 
 export interface CreateFGTSTableRequest {
-  referenceYear: number
-  referenceMonth: number
-  active: boolean
+  year: number
+  active?: boolean
   rates: FGTSRate[]
 }
 
-export interface UpdateFGTSTableRequest extends Partial<CreateFGTSTableRequest> {}
+export interface UpdateFGTSTableRequest {
+  active?: boolean
+  rates?: FGTSRate[]
+}
 
 export interface ListFGTSTablesParams {
   active?: boolean
   year?: number
-  month?: number
 }
 
 // ==========================================
 // TYPES - IRRF
 // ==========================================
 
-export interface IRRFBracket {
-  upTo: number | null
+export interface IRRFRange {
+  id?: string
+  minValue: number
+  maxValue: number | null
   rate: number
   deduction: number
 }
@@ -88,24 +101,31 @@ export interface IRRFBracket {
 export interface IRRFTable {
   id: string
   companyId: string
-  referenceYear: number
-  referenceMonth: number
+  year: number
   active: boolean
-  brackets: IRRFBracket[]
   dependentDeduction: number
+  ranges: IRRFRange[]
   createdAt: string
   updatedAt: string
 }
 
 export interface CreateIRRFTableRequest {
-  referenceYear: number
-  referenceMonth: number
-  active: boolean
-  brackets: IRRFBracket[]
+  year: number
   dependentDeduction: number
+  active?: boolean
+  ranges: IRRFRange[]
 }
 
-export interface UpdateIRRFTableRequest extends Partial<CreateIRRFTableRequest> {}
+export interface UpdateIRRFTableRequest {
+  active?: boolean
+  dependentDeduction?: number
+  ranges?: IRRFRange[]
+}
+
+export interface ListIRRFTablesParams {
+  active?: boolean
+  year?: number
+}
 
 export interface ListIRRFTablesParams {
   active?: boolean

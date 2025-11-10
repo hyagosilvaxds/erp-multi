@@ -30,17 +30,26 @@ export interface PayrollItem {
     id: string
     name: string
     cpf: string
-    position: string
+    admissionDate?: string
+    position?: {
+      id: string
+      name: string
+    }
   }
-  baseSalary: string
   workDays: number
-  earnings: PayrollEarningItem[]
   totalEarnings: string
-  deductions: PayrollDeductionItem[]
   totalDeductions: string
   netAmount: string
   notes?: string
-  createdAt: string
+  earnings: Array<{
+    name: string
+    value: string
+  }>
+  deductions: Array<{
+    name: string
+    value: string
+  }>
+  createdAt?: string
   updatedAt?: string
 }
 
@@ -57,12 +66,25 @@ export interface Payroll {
   totalEarnings: string
   totalDeductions: string
   netAmount: string
+  notes?: string
   itemsCount?: number
   items?: PayrollItem[]
+  company?: {
+    id: string
+    razaoSocial: string
+    cnpj: string
+  }
   createdBy?: {
     id: string
     name: string
   }
+  createdById?: string
+  approvedBy?: {
+    id: string
+    name: string
+  }
+  approvedById?: string | null
+  approvedAt?: string | null
   createdAt: string
   updatedAt?: string
 }
@@ -76,8 +98,9 @@ export interface CreatePayrollRequest {
   paymentDate: string
 }
 
-export interface UpdatePayrollRequest extends Partial<CreatePayrollRequest> {
-  status?: PayrollStatus
+export interface UpdatePayrollRequest {
+  paymentDate?: string
+  notes?: string
 }
 
 export interface ListPayrollParams {
@@ -85,31 +108,31 @@ export interface ListPayrollParams {
   type?: PayrollType
   referenceMonth?: number
   referenceYear?: number
+  search?: string
   page?: number
   limit?: number
+  sortBy?: string
+  sortOrder?: 'asc' | 'desc'
 }
 
 export interface ListPayrollResponse {
   data: Payroll[]
-  total: number
-  page: number
-  limit: number
-  totalPages: number
+  meta: {
+    total: number
+    page: number
+    limit: number
+    totalPages: number
+  }
 }
 
 export interface CreatePayrollItemRequest {
   employeeId: string
-  baseSalary: number
-  workDays: number
-  earnings: Array<{
-    typeId: string
-    code: string
+  workDays?: number
+  earnings?: Array<{
     name: string
     value: number
   }>
-  deductions: Array<{
-    typeId: string
-    code: string
+  deductions?: Array<{
     name: string
     value: number
   }>
@@ -129,18 +152,15 @@ export interface CalculatePayrollResponse {
 export interface ApprovePayrollResponse {
   id: string
   status: PayrollStatus
-  approvedBy: {
-    id: string
-    name: string
-  }
+  approvedById: string
   approvedAt: string
-  message: string
+  updatedAt: string
 }
 
 export interface PayPayrollResponse {
   id: string
   status: PayrollStatus
-  message: string
+  updatedAt: string
 }
 
 export interface PayrollMonthStats {
@@ -162,6 +182,27 @@ export interface PayrollStats {
     CALCULATED: number
     APPROVED: number
     PAID: number
+  }
+}
+
+export interface PayrollStatsResponse {
+  totalPayrolls: number
+  totalEmployees: number
+  totalEarnings: string
+  totalDeductions: string
+  totalNetAmount: string
+  averageNetAmount: string
+  byStatus: {
+    DRAFT: number
+    CALCULATED: number
+    APPROVED: number
+    PAID: number
+  }
+  byType: {
+    MONTHLY: number
+    WEEKLY: number
+    DAILY: number
+    ADVANCE: number
   }
 }
 
@@ -346,11 +387,14 @@ export const markPayrollAsPaid = async (id: string): Promise<PayPayrollResponse>
 /**
  * Busca estatísticas de folhas de pagamento
  */
-export const getPayrollStats = async (year?: number): Promise<PayrollStats> => {
+export const getPayrollStats = async (
+  referenceMonth?: number,
+  referenceYear?: number
+): Promise<PayrollStatsResponse> => {
   const companyId = getCompanyId()
 
-  const response = await apiClient.get<PayrollStats>('/payroll/stats', {
-    params: { year },
+  const response = await apiClient.get<PayrollStatsResponse>('/payroll/stats', {
+    params: { referenceMonth, referenceYear },
     headers: {
       'x-company-id': companyId,
     },
@@ -360,23 +404,83 @@ export const getPayrollStats = async (year?: number): Promise<PayrollStats> => {
 }
 
 /**
- * Exporta folha de pagamento em PDF
+ * Baixa folha consolidada em PDF
+ * GET /payroll/:id/pdf
  */
-export const exportPayrollPDF = async (id: string): Promise<Blob> => {
-  const companyId = getCompanyId()
+export const downloadPayrollPDF = async (id: string): Promise<Blob> => {
+  try {
+    console.log('downloadPayrollPDF - iniciando download:', id)
+    const companyId = getCompanyId()
+    console.log('downloadPayrollPDF - companyId:', companyId)
 
-  const response = await apiClient.get(`/payroll/${id}/export/pdf`, {
-    responseType: 'blob',
-    headers: {
-      'x-company-id': companyId,
-    },
-  })
+    const response = await apiClient.get(`/payroll/${id}/pdf`, {
+      responseType: 'blob',
+      headers: {
+        'x-company-id': companyId,
+      },
+    })
 
-  return response.data
+    console.log('downloadPayrollPDF - resposta recebida:', {
+      status: response.status,
+      contentType: response.headers['content-type'],
+      dataType: typeof response.data,
+      dataSize: response.data?.size || 0,
+    })
+
+    return response.data
+  } catch (error: any) {
+    console.error('downloadPayrollPDF - erro:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    })
+    throw error
+  }
 }
 
 /**
- * Exporta folha de pagamento em Excel
+ * Baixa holerite individual em PDF
+ * GET /payroll/:id/items/:itemId/payslip
+ */
+export const downloadPayslipPDF = async (
+  payrollId: string,
+  itemId: string
+): Promise<Blob> => {
+  try {
+    console.log('downloadPayslipPDF - iniciando download:', { payrollId, itemId })
+    const companyId = getCompanyId()
+    console.log('downloadPayslipPDF - companyId:', companyId)
+
+    const response = await apiClient.get(
+      `/payroll/${payrollId}/items/${itemId}/payslip`,
+      {
+        responseType: 'blob',
+        headers: {
+          'x-company-id': companyId,
+        },
+      }
+    )
+
+    console.log('downloadPayslipPDF - resposta recebida:', {
+      status: response.status,
+      contentType: response.headers['content-type'],
+      dataType: typeof response.data,
+      dataSize: response.data?.size || 0,
+    })
+
+    return response.data
+  } catch (error: any) {
+    console.error('downloadPayslipPDF - erro:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    })
+    throw error
+  }
+}
+
+/**
+ * Exporta folha de pagamento em Excel (legado - manter compatibilidade)
  */
 export const exportPayrollExcel = async (id: string): Promise<Blob> => {
   const companyId = getCompanyId()
@@ -392,39 +496,30 @@ export const exportPayrollExcel = async (id: string): Promise<Blob> => {
 }
 
 /**
- * Gera holerite individual em PDF
- */
-export const generatePayslipPDF = async (
-  payrollId: string,
-  employeeId: string
-): Promise<Blob> => {
-  const companyId = getCompanyId()
-
-  const response = await apiClient.get(
-    `/payroll/${payrollId}/employees/${employeeId}/payslip`,
-    {
-      responseType: 'blob',
-      headers: {
-        'x-company-id': companyId,
-      },
-    }
-  )
-
-  return response.data
-}
-
-/**
  * Helper para baixar arquivo Blob
  */
 export const downloadFile = (blob: Blob, filename: string) => {
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  window.URL.revokeObjectURL(url)
+  try {
+    console.log('downloadFile chamado:', { blobSize: blob.size, filename })
+    
+    if (!blob || blob.size === 0) {
+      throw new Error('Blob inválido ou vazio')
+    }
+    
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    console.log('Download iniciado com sucesso')
+  } catch (error) {
+    console.error('Erro ao fazer download do arquivo:', error)
+    throw error
+  }
 }
 
 // Exporta o objeto API com todas as funções
@@ -440,8 +535,8 @@ export const payrollApi = {
   approve: approvePayroll,
   markAsPaid: markPayrollAsPaid,
   getStats: getPayrollStats,
-  exportPDF: exportPayrollPDF,
+  downloadPDF: downloadPayrollPDF,
+  downloadPayslip: downloadPayslipPDF,
   exportExcel: exportPayrollExcel,
-  generatePayslip: generatePayslipPDF,
   downloadFile,
 }

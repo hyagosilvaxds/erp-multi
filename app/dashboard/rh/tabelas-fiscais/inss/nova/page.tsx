@@ -26,7 +26,6 @@ export default function NovaINSSPage() {
 
   const [loading, setLoading] = useState(false)
   const [referenceYear, setReferenceYear] = useState(new Date().getFullYear())
-  const [referenceMonth, setReferenceMonth] = useState(new Date().getMonth() + 1)
   const [active, setActive] = useState(true)
   const [brackets, setBrackets] = useState<INSSBracket[]>([
     { upTo: 1412.00, employeeRate: 7.5, employerRate: 20.0 },
@@ -78,7 +77,6 @@ export default function NovaINSSPage() {
 
       await inssTablesApi.create({
         referenceYear,
-        referenceMonth,
         active,
         brackets,
       })
@@ -139,11 +137,11 @@ export default function NovaINSSPage() {
             <CardHeader>
               <CardTitle>Informações da Tabela</CardTitle>
               <CardDescription>
-                Defina o período de referência e status da tabela
+                Defina o ano de referência e status da tabela
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="referenceYear">Ano de Referência *</Label>
                   <Select
@@ -157,24 +155,6 @@ export default function NovaINSSPage() {
                       {years.map((year) => (
                         <SelectItem key={year} value={year.toString()}>
                           {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="referenceMonth">Mês de Referência *</Label>
-                  <Select
-                    value={referenceMonth.toString()}
-                    onValueChange={(value) => setReferenceMonth(parseInt(value))}
-                  >
-                    <SelectTrigger id="referenceMonth">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map((month) => (
-                        <SelectItem key={month.value} value={month.value.toString()}>
-                          {month.label}
                         </SelectItem>
                       ))}
                     </SelectContent>

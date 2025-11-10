@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Plus, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { useToast } from '@/hooks/use-toast'
-import { irrfTablesApi, type IRRFBracket } from '@/lib/api/tax-tables'
+import { irrfTablesApi, type IRRFRange } from '@/lib/api/tax-tables'
 
 export default function EditarIRRFPage() {
   const params = useParams()
@@ -22,11 +22,10 @@ export default function EditarIRRFPage() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [referenceYear, setReferenceYear] = useState(new Date().getFullYear())
-  const [referenceMonth, setReferenceMonth] = useState(new Date().getMonth() + 1)
+  const [referenceYear, setReferenceYear] = useState<number>(new Date().getFullYear())
   const [active, setActive] = useState(true)
   const [dependentDeduction, setDependentDeduction] = useState(189.59)
-  const [brackets, setBrackets] = useState<IRRFBracket[]>([])
+  const [ranges, setRanges] = useState<IRRFRange[]>([])
 
   useEffect(() => {
     loadTable()
@@ -36,11 +35,10 @@ export default function EditarIRRFPage() {
     try {
       setLoading(true)
       const table = await irrfTablesApi.getById(tableId)
-      setReferenceYear(table.referenceYear)
-      setReferenceMonth(table.referenceMonth)
+      setReferenceYear(table.year)
       setActive(table.active)
       setDependentDeduction(table.dependentDeduction)
-      setBrackets(table.brackets)
+      setRanges(table.ranges)
     } catch (error: any) {
       toast({
         title: 'Erro ao carregar tabela',
@@ -53,24 +51,24 @@ export default function EditarIRRFPage() {
     }
   }
 
-  const handleAddBracket = () => {
-    setBrackets([...brackets, { upTo: 0, rate: 0, deduction: 0 }])
+  const handleAddRange = () => {
+    setRanges([...ranges, { minValue: 0, maxValue: 0, rate: 0, deduction: 0 }])
   }
 
-  const handleRemoveBracket = (index: number) => {
-    setBrackets(brackets.filter((_, i) => i !== index))
+  const handleRemoveRange = (index: number) => {
+    setRanges(ranges.filter((_, i) => i !== index))
   }
 
-  const handleBracketChange = (index: number, field: keyof IRRFBracket, value: number | null) => {
-    const newBrackets = [...brackets]
-    newBrackets[index] = { ...newBrackets[index], [field]: value }
-    setBrackets(newBrackets)
+  const handleRangeChange = (index: number, field: keyof IRRFRange, value: number | null) => {
+    const newRanges = [...ranges]
+    newRanges[index] = { ...newRanges[index], [field]: value }
+    setRanges(newRanges)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (brackets.length === 0) {
+    if (ranges.length === 0) {
       toast({
         title: 'Campos obrigatórios',
         description: 'Adicione pelo menos uma faixa de IRRF.',
@@ -83,10 +81,8 @@ export default function EditarIRRFPage() {
       setSaving(true)
 
       await irrfTablesApi.update(tableId, {
-        referenceYear,
-        referenceMonth,
         active,
-        brackets,
+        ranges,
         dependentDeduction,
       })
 
@@ -147,26 +143,15 @@ export default function EditarIRRFPage() {
           <Card>
             <CardHeader>
               <CardTitle>Informações da Tabela</CardTitle>
+              <CardDescription>
+                Ano de referência e status da tabela (ano não pode ser alterado)
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>Ano *</Label>
-                  <Select value={referenceYear.toString()} onValueChange={(v) => setReferenceYear(parseInt(v))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {years.map((year) => <SelectItem key={year} value={year.toString()}>{year}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Mês *</Label>
-                  <Select value={referenceMonth.toString()} onValueChange={(v) => setReferenceMonth(parseInt(v))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {months.map((m) => <SelectItem key={m.value} value={m.value.toString()}>{m.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Label>Ano</Label>
+                  <Input value={referenceYear} disabled />
                 </div>
                 <div className="space-y-2">
                   <Label>Dedução por Dependente (R$) *</Label>
@@ -187,37 +172,48 @@ export default function EditarIRRFPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Faixas de IRRF</CardTitle>
-                <Button type="button" variant="outline" onClick={handleAddBracket}>
+                <Button type="button" variant="outline" onClick={handleAddRange}>
                   <Plus className="h-4 w-4 mr-2" />Adicionar Faixa
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {brackets.map((bracket, index) => (
+              {ranges.map((range, index) => (
                 <Card key={index}>
                   <CardContent className="pt-6">
                     <div className="flex items-start gap-4">
-                      <div className="flex-1 grid gap-4 md:grid-cols-3">
+                      <div className="flex-1 grid gap-4 md:grid-cols-4">
                         <div className="space-y-2">
-                          <Label>Até (R$) {index === brackets.length - 1 && '(null = sem limite)'}</Label>
+                          <Label>De (R$) *</Label>
                           <Input
                             type="number"
                             step="0.01"
-                            value={bracket.upTo === null ? '' : bracket.upTo}
-                            onChange={(e) => handleBracketChange(index, 'upTo', e.target.value === '' ? null : parseFloat(e.target.value))}
+                            value={range.minValue}
+                            onChange={(e) => handleRangeChange(index, 'minValue', parseFloat(e.target.value))}
+                            placeholder="0.00"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Até (R$) {index === ranges.length - 1 && '(null = sem limite)'}</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={range.maxValue === null ? '' : range.maxValue}
+                            onChange={(e) => handleRangeChange(index, 'maxValue', e.target.value === '' ? null : parseFloat(e.target.value))}
                             placeholder="Deixe vazio para sem limite"
                           />
                         </div>
                         <div className="space-y-2">
                           <Label>Alíquota (%) *</Label>
-                          <Input type="number" step="0.01" value={bracket.rate} onChange={(e) => handleBracketChange(index, 'rate', parseFloat(e.target.value))} required />
+                          <Input type="number" step="0.01" value={range.rate} onChange={(e) => handleRangeChange(index, 'rate', parseFloat(e.target.value))} required />
                         </div>
                         <div className="space-y-2">
                           <Label>Dedução (R$) *</Label>
-                          <Input type="number" step="0.01" value={bracket.deduction} onChange={(e) => handleBracketChange(index, 'deduction', parseFloat(e.target.value))} required />
+                          <Input type="number" step="0.01" value={range.deduction} onChange={(e) => handleRangeChange(index, 'deduction', parseFloat(e.target.value))} required />
                         </div>
                       </div>
-                      <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveBracket(index)} className="mt-8">
+                      <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveRange(index)} className="mt-8">
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
