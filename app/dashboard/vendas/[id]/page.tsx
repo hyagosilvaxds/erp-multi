@@ -27,6 +27,8 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { 
   ArrowLeft, 
   Edit, 
@@ -40,8 +42,10 @@ import {
   Package,
   FileText,
   Download,
+  Receipt,
 } from "lucide-react"
-import { salesApi, Sale, saleStatusLabels, saleStatusColors } from "@/lib/api/sales"
+import { salesApi, Sale, saleStatusLabels, saleStatusColors, shippingModalityLabels } from "@/lib/api/sales"
+import { nfeApi, EmitirNFeDto, NFe, getFileUrl } from "@/lib/api/nfe"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/masks"
 
@@ -68,6 +72,23 @@ export default function DetalhesVendaPage() {
 
   // Dialog de exclusão
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+
+  // Dialog de emissão de NF-e
+  const [nfeDialogOpen, setNfeDialogOpen] = useState(false)
+  const [emitindoNFe, setEmitindoNFe] = useState(false)
+  const [nfeEmitida, setNfeEmitida] = useState<NFe | null>(null)
+  const [nfeFormData, setNfeFormData] = useState<EmitirNFeDto>({
+    saleId: saleId,
+    enviarSefaz: true,
+    modelo: "55",
+    serie: "1",
+    naturezaOperacao: "VENDA",
+    tipoOperacao: "1",
+    finalidade: "1",
+    consumidorFinal: "1",
+    presencaComprador: "1",
+    modalidadeFrete: "9",
+  })
 
   useEffect(() => {
     loadSale()
@@ -222,28 +243,6 @@ export default function DetalhesVendaPage() {
     }
   }
 
-  const handleComplete = async () => {
-    try {
-      setActionLoading(true)
-      await salesApi.complete(saleId)
-
-      toast({
-        title: "Venda concluída",
-        description: "A venda foi marcada como concluída.",
-      })
-
-      loadSale()
-    } catch (error: any) {
-      toast({
-        title: "Erro ao concluir venda",
-        description: error.response?.data?.message || "Tente novamente mais tarde.",
-        variant: "destructive",
-      })
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
   const handleDelete = async () => {
     try {
       setActionLoading(true)
@@ -264,6 +263,105 @@ export default function DetalhesVendaPage() {
     } finally {
       setActionLoading(false)
       setDeleteDialogOpen(false)
+    }
+  }
+
+  const handleEmitirNFe = async () => {
+    try {
+      setEmitindoNFe(true)
+      
+      const nfe = await nfeApi.emitir({
+        ...nfeFormData,
+        saleId: saleId,
+      })
+      
+      setNfeEmitida(nfe)
+      
+      // Sempre exibir o resultado no dialog
+      // O toast depende do status
+      if (nfe.status === "AUTHORIZED" || nfe.status === "AUTORIZADA") {
+        toast({
+          title: "✓ NF-e Autorizada",
+          description: `NF-e ${nfe.numero} autorizada pela SEFAZ.`,
+        })
+      } else if (nfe.status === "REJECTED" || nfe.status === "REJEITADA") {
+        toast({
+          title: "✗ NF-e Rejeitada",
+          description: nfe.motivoRejeicao || nfe.mensagemSefaz || "Verifique os detalhes no dialog.",
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "NF-e Processada",
+          description: "Aguardando resposta da SEFAZ.",
+        })
+      }
+      
+      // Recarregar venda para atualizar dados
+      loadSale()
+    } catch (error: any) {
+      toast({
+        title: "Erro ao emitir NF-e",
+        description: error.response?.data?.message || "Tente novamente mais tarde.",
+        variant: "destructive",
+      })
+      setNfeDialogOpen(false)
+    } finally {
+      setEmitindoNFe(false)
+    }
+  }
+
+  const handleDownloadDanfe = async () => {
+    if (!nfeEmitida?.id) return
+    
+    try {
+      const blob = await nfeApi.downloadPDF(nfeEmitida.id)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `danfe-${nfeEmitida.numero}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      
+      toast({
+        title: "DANFE baixado",
+        description: "O arquivo PDF foi baixado com sucesso.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Erro ao baixar DANFE",
+        description: error.response?.data?.message || "Tente novamente mais tarde.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDownloadXml = async () => {
+    if (!nfeEmitida?.id) return
+    
+    try {
+      const blob = await nfeApi.downloadXML(nfeEmitida.id)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `nfe-${nfeEmitida.numero}.xml`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      
+      toast({
+        title: "XML baixado",
+        description: "O arquivo XML foi baixado com sucesso.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Erro ao baixar XML",
+        description: error.response?.data?.message || "Tente novamente mais tarde.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -292,8 +390,7 @@ export default function DetalhesVendaPage() {
   }
 
   const canEdit = sale.status === "QUOTE" || sale.status === "DRAFT"
-  const canApprove = sale.status === "QUOTE" || sale.status === "DRAFT" || sale.status === "PENDING_APPROVAL"
-  const canComplete = sale.status === "APPROVED"
+  const canApprove = sale.status !== "APPROVED" && sale.status !== "COMPLETED" && sale.status !== "CANCELED"
   const canCancel = sale.status !== "COMPLETED" && sale.status !== "CANCELED"
   const canDelete = sale.status === "QUOTE" || sale.status === "DRAFT"
 
@@ -352,10 +449,14 @@ export default function DetalhesVendaPage() {
                 {sale.status === "QUOTE" ? "Confirmar Orçamento" : "Aprovar"}
               </Button>
             )}
-            {canComplete && (
-              <Button onClick={handleComplete} disabled={actionLoading}>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Concluir
+            {(sale.status === "CONFIRMED" || sale.status === "APPROVED" || sale.status === "COMPLETED") && (
+              <Button 
+                variant="outline"
+                onClick={() => setNfeDialogOpen(true)} 
+                disabled={emitindoNFe}
+              >
+                <Receipt className="mr-2 h-4 w-4" />
+                Emitir NF-e
               </Button>
             )}
             {canCancel && (
@@ -395,15 +496,39 @@ export default function DetalhesVendaPage() {
               <CardContent className="space-y-2">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Nome</p>
-                    <p className="font-medium">{sale.customer?.name || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Documento</p>
+                    <p className="text-sm text-muted-foreground">
+                      {sale.customer?.personType === "JURIDICA" ? "Razão Social" : "Nome"}
+                    </p>
                     <p className="font-medium">
-                      {sale.customer?.cpf || sale.customer?.cnpj || sale.customer?.cpfCnpj || "—"}
+                      {sale.customer?.personType === "JURIDICA" 
+                        ? (sale.customer?.companyName || sale.customer?.tradeName || "—")
+                        : (sale.customer?.name || "—")
+                      }
                     </p>
                   </div>
+                  {sale.customer?.personType === "JURIDICA" && sale.customer?.tradeName && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Nome Fantasia</p>
+                      <p className="font-medium">{sale.customer.tradeName}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      {sale.customer?.personType === "JURIDICA" ? "CNPJ" : "CPF"}
+                    </p>
+                    <p className="font-medium">
+                      {sale.customer?.personType === "JURIDICA"
+                        ? (sale.customer?.cnpj || "—")
+                        : (sale.customer?.cpf || sale.customer?.cpfCnpj || "—")
+                      }
+                    </p>
+                  </div>
+                  {sale.customer?.personType === "JURIDICA" && sale.customer?.stateRegistration && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Inscrição Estadual</p>
+                      <p className="font-medium">{sale.customer.stateRegistration}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-sm text-muted-foreground">Email</p>
                     <p className="font-medium">{sale.customer?.email || "—"}</p>
@@ -510,10 +635,35 @@ export default function DetalhesVendaPage() {
             )}
 
             {/* Endereço de Entrega */}
-            {sale.deliveryAddress && !sale.useCustomerAddress && (
+            {sale.useCustomerAddress && sale.customer?.addresses && sale.customer.addresses.length > 0 ? (
               <Card>
                 <CardHeader>
                   <CardTitle>Endereço de Entrega</CardTitle>
+                  <CardDescription>Utilizando endereço cadastrado do cliente</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {(() => {
+                    const mainAddress = sale.customer.addresses.find(addr => addr.type === "MAIN") || sale.customer.addresses[0]
+                    return mainAddress ? (
+                      <>
+                        <p className="text-sm">
+                          {mainAddress.street}, {mainAddress.number}
+                          {mainAddress.complement && ` - ${mainAddress.complement}`}
+                        </p>
+                        <p className="text-sm">
+                          {mainAddress.neighborhood} - {mainAddress.city}/{mainAddress.state}
+                        </p>
+                        <p className="text-sm">CEP: {mainAddress.zipCode}</p>
+                      </>
+                    ) : <p className="text-sm text-muted-foreground">Endereço não disponível</p>
+                  })()}
+                </CardContent>
+              </Card>
+            ) : sale.deliveryAddress && !sale.useCustomerAddress ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Endereço de Entrega</CardTitle>
+                  <CardDescription>Endereço customizado para esta venda</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm">
@@ -526,7 +676,7 @@ export default function DetalhesVendaPage() {
                   <p className="text-sm">CEP: {sale.deliveryAddress.zipCode}</p>
                 </CardContent>
               </Card>
-            )}
+            ) : null}
 
             {/* Análise de Crédito */}
             {sale.creditAnalysisStatus && (
@@ -602,9 +752,16 @@ export default function DetalhesVendaPage() {
                   </div>
                 )}
                 {sale.shippingCost > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Frete</span>
-                    <span className="font-medium">+ {formatCurrency(sale.shippingCost || sale.shipping || 0)}</span>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Frete</span>
+                      <span className="font-medium">+ {formatCurrency(sale.shippingCost || sale.shipping || 0)}</span>
+                    </div>
+                    {sale.shippingModality !== undefined && (
+                      <p className="text-xs text-muted-foreground">
+                        {shippingModalityLabels[sale.shippingModality]}
+                      </p>
+                    )}
                   </div>
                 )}
                 {sale.otherCharges > 0 && (
@@ -712,6 +869,102 @@ export default function DetalhesVendaPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* NF-es Emitidas */}
+            {sale.nfes && sale.nfes.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Receipt className="h-5 w-5" />
+                    NF-es Emitidas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {sale.nfes.map((nfe: any) => (
+                      <div key={nfe.id} className="flex items-center justify-between p-2 border rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium">NF-e {nfe.numero}</p>
+                          <p className="text-xs text-muted-foreground">Série: {nfe.serie}</p>
+                        </div>
+                        <Badge variant={
+                          nfe.status === "AUTHORIZED" ? "default" :
+                          nfe.status === "REJECTED" || nfe.status === "REJEITADA" ? "destructive" :
+                          "secondary"
+                        }>
+                          {nfe.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Contas a Receber */}
+            {sale.accountsReceivable && sale.accountsReceivable.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Contas a Receber
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {sale.accountsReceivable.map((conta: any) => (
+                      <div key={conta.id} className="flex items-center justify-between p-2 border rounded-lg">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{formatCurrency(conta.originalAmount)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Venc: {formatDate(conta.dueDate)}
+                          </p>
+                        </div>
+                        <Badge variant={
+                          conta.status === "RECEBIDO" ? "default" :
+                          conta.status === "VENCIDO" ? "destructive" :
+                          "secondary"
+                        }>
+                          {conta.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Movimentações de Estoque */}
+            {sale.stockMovements && sale.stockMovements.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="h-5 w-5" />
+                    Movimentações de Estoque
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {sale.stockMovements.map((movement: any) => (
+                      <div key={movement.id} className="p-2 border rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium">{movement.product?.name}</p>
+                          <Badge variant={movement.type === "ENTRY" ? "default" : "secondary"}>
+                            {movement.type === "ENTRY" ? "Entrada" : "Saída"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-xs text-muted-foreground">{movement.location?.name}</p>
+                          <p className="text-xs font-medium">
+                            Qtd: {movement.quantity}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
@@ -888,6 +1141,349 @@ export default function DetalhesVendaPage() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Emissão de NF-e */}
+      <Dialog open={nfeDialogOpen} onOpenChange={setNfeDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Emitir Nota Fiscal Eletrônica (NF-e)
+            </DialogTitle>
+            <DialogDescription>
+              Venda {sale?.code} • Cliente: {sale?.customer?.name} • Total: {sale && formatCurrency(sale.totalAmount)}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!nfeEmitida ? (
+            <>
+              <div className="space-y-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="modelo">Modelo *</Label>
+                    <Select
+                      value={nfeFormData.modelo}
+                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, modelo: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="55">55 - NF-e</SelectItem>
+                        <SelectItem value="65">65 - NFC-e</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="serie">Série *</Label>
+                    <Input
+                      id="serie"
+                      value={nfeFormData.serie}
+                      onChange={(e) => setNfeFormData({ ...nfeFormData, serie: e.target.value })}
+                      placeholder="1"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="naturezaOperacao">Natureza da Operação *</Label>
+                  <Input
+                    id="naturezaOperacao"
+                    value={nfeFormData.naturezaOperacao}
+                    onChange={(e) => setNfeFormData({ ...nfeFormData, naturezaOperacao: e.target.value })}
+                    placeholder="VENDA"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="tipoOperacao">Tipo de Operação *</Label>
+                    <Select
+                      value={nfeFormData.tipoOperacao}
+                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, tipoOperacao: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">0 - Entrada</SelectItem>
+                        <SelectItem value="1">1 - Saída</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="finalidade">Finalidade *</Label>
+                    <Select
+                      value={nfeFormData.finalidade}
+                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, finalidade: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 - Normal</SelectItem>
+                        <SelectItem value="2">2 - Complementar</SelectItem>
+                        <SelectItem value="3">3 - Ajuste</SelectItem>
+                        <SelectItem value="4">4 - Devolução</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="consumidorFinal">Consumidor Final *</Label>
+                    <Select
+                      value={nfeFormData.consumidorFinal}
+                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, consumidorFinal: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">0 - Não</SelectItem>
+                        <SelectItem value="1">1 - Sim</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="presencaComprador">Presença do Comprador *</Label>
+                    <Select
+                      value={nfeFormData.presencaComprador}
+                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, presencaComprador: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">0 - Não se aplica</SelectItem>
+                        <SelectItem value="1">1 - Presencial</SelectItem>
+                        <SelectItem value="2">2 - Internet</SelectItem>
+                        <SelectItem value="3">3 - Teleatendimento</SelectItem>
+                        <SelectItem value="4">4 - NFC-e Entrega</SelectItem>
+                        <SelectItem value="9">9 - Outros</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="modalidadeFrete">Modalidade do Frete *</Label>
+                    <Select
+                      value={nfeFormData.modalidadeFrete}
+                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, modalidadeFrete: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">0 - Emitente (CIF)</SelectItem>
+                        <SelectItem value="1">1 - Destinatário (FOB)</SelectItem>
+                        <SelectItem value="2">2 - Terceiros</SelectItem>
+                        <SelectItem value="3">3 - Próprio Emitente</SelectItem>
+                        <SelectItem value="4">4 - Próprio Destinatário</SelectItem>
+                        <SelectItem value="9">9 - Sem Frete</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>Atenção:</strong> Ao confirmar, a NF-e será enviada para a SEFAZ e, se autorizada, 
+                    não poderá mais ser editada. Certifique-se de que todos os dados estão corretos.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setNfeDialogOpen(false)}
+                  disabled={emitindoNFe}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={handleEmitirNFe} disabled={emitindoNFe}>
+                  {emitindoNFe ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Emitindo NF-e...
+                    </>
+                  ) : (
+                    <>
+                      <Receipt className="mr-2 h-4 w-4" />
+                      Emitir NF-e
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="space-y-4 py-4">
+                {/* Card de Status - Sucesso ou Erro */}
+                {(nfeEmitida.status === "AUTHORIZED" || nfeEmitida.status === "AUTORIZADA") ? (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                    <h3 className="text-sm font-semibold text-green-800 mb-3">✓ NF-e Autorizada com Sucesso!</h3>
+                    <div className="space-y-2 text-sm text-green-700">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                        <div>
+                          <p className="text-xs text-green-600 font-medium">Número:</p>
+                          <p className="font-semibold">{nfeEmitida.numero}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-green-600 font-medium">Série:</p>
+                          <p className="font-semibold">{nfeEmitida.serie}</p>
+                        </div>
+                      </div>
+                      
+                      {(nfeEmitida.protocolo || nfeEmitida.protocoloAutorizacao) && (
+                        <div className="pt-2 border-t border-green-200">
+                          <p className="text-xs text-green-600 font-medium">Protocolo de Autorização:</p>
+                          <p className="font-mono font-semibold">{nfeEmitida.protocolo || nfeEmitida.protocoloAutorizacao}</p>
+                        </div>
+                      )}
+                      
+                      {nfeEmitida.chaveAcesso && (
+                        <div className="pt-2 border-t border-green-200">
+                          <p className="text-xs text-green-600 font-medium">Chave de Acesso:</p>
+                          <p className="font-mono text-xs font-semibold break-all">{nfeEmitida.chaveAcesso}</p>
+                        </div>
+                      )}
+                      
+                      {nfeEmitida.dataAutorizacao && (
+                        <div className="pt-2 border-t border-green-200">
+                          <p className="text-xs text-green-600 font-medium">Data de Autorização:</p>
+                          <p className="font-semibold">{formatDateTime(String(nfeEmitida.dataAutorizacao))}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (nfeEmitida.status === "REJECTED" || nfeEmitida.status === "REJEITADA") ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                    <h3 className="text-sm font-semibold text-red-800 mb-2">✗ NF-e Rejeitada pela SEFAZ</h3>
+                    <div className="space-y-2 text-sm text-red-700">
+                      <div>
+                        <p><strong>Código:</strong> {nfeEmitida.codigoStatus || "—"}</p>
+                        <p><strong>Motivo:</strong> {nfeEmitida.motivoRejeicao || nfeEmitida.mensagemSefaz || "Motivo não informado"}</p>
+                      </div>
+                      <div className="pt-2 border-t border-red-200">
+                        <p className="text-xs">A NF-e foi gerada mas não foi aceita pela SEFAZ. Corrija os dados e tente novamente.</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+                    <h3 className="text-sm font-semibold text-yellow-800 mb-2">⏳ NF-e em Processamento</h3>
+                    <div className="space-y-1 text-sm text-yellow-700">
+                      <p><strong>Número:</strong> {nfeEmitida.numero}</p>
+                      <p><strong>Série:</strong> {nfeEmitida.serie}</p>
+                      <p className="text-xs pt-2">Aguardando resposta da SEFAZ...</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Downloads de Arquivos */}
+                {(nfeEmitida.status === "AUTHORIZED" || nfeEmitida.status === "AUTORIZADA") && (
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium">Downloads Disponíveis</Label>
+                    
+                    {/* DANFE em destaque */}
+                    {nfeEmitida.danfeUrl && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => window.open(getFileUrl(nfeEmitida.danfeUrl!) || undefined, '_blank')}
+                        className="w-full bg-green-600 hover:bg-green-700"
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Baixar DANFE (PDF)
+                      </Button>
+                    )}
+                    
+                    {/* XMLs em grid */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {nfeEmitida.xmlGeradoUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlGeradoUrl) || undefined, '_blank')}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          XML Gerado
+                        </Button>
+                      )}
+                      {nfeEmitida.xmlAssinadoUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlAssinadoUrl) || undefined, '_blank')}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          XML Assinado
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Downloads de Arquivos XML (para casos de erro) */}
+                {(nfeEmitida.status === "REJECTED" || nfeEmitida.status === "REJEITADA") && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Arquivos XML</Label>
+                    <div className="grid grid-cols-1 gap-2">
+                      {nfeEmitida.xmlGeradoUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlGeradoUrl) || undefined, '_blank')}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          XML Gerado
+                        </Button>
+                      )}
+                      {nfeEmitida.xmlAssinadoUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlAssinadoUrl) || undefined, '_blank')}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          XML Assinado
+                        </Button>
+                      )}
+                      {nfeEmitida.xmlErroUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlErroUrl) || undefined, '_blank')}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Detalhes do Erro (JSON)
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  onClick={() => {
+                    setNfeDialogOpen(false)
+                    setNfeEmitida(null)
+                  }}
+                >
+                  Fechar
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardLayout>

@@ -24,6 +24,7 @@ export interface CustomerAddress {
   city: string
   state: string
   country?: string
+  ibgeCode?: string // Código IBGE do município (7 dígitos) - Obrigatório para NFe
   reference?: string
   isDefault: boolean
   active: boolean
@@ -147,6 +148,7 @@ export interface CreateCustomerRequest {
     city: string
     state: string
     country?: string
+    ibgeCode?: string // Código IBGE do município
     reference?: string
   }>
   contacts?: Array<{

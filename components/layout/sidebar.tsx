@@ -34,6 +34,7 @@ import {
   Scale,
   ArrowRightLeft,
   Briefcase,
+  FileCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -132,6 +133,7 @@ const companyMenuItems = [
     ],
   },
   { icon: ShoppingCart, label: "Vendas", href: "/dashboard/vendas", module: "vendas" },
+  { icon: FileCheck, label: "NF-e", href: "/dashboard/nfe", module: "nfe" },
   {
     icon: Package,
     label: "Produtos",

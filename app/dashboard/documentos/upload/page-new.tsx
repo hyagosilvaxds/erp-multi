@@ -66,7 +66,7 @@ export default function UploadDocumentosPage() {
 
   const [loading, setLoading] = useState(true)
   const [folders, setFolders] = useState<FolderType[]>([])
-  const [selectedFolderId, setSelectedFolderId] = useState("")
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [tags, setTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
   const [description, setDescription] = useState("")
@@ -434,12 +434,12 @@ export default function UploadDocumentosPage() {
                 {/* Pasta */}
                 <div className="space-y-2">
                   <Label htmlFor="folder">Pasta</Label>
-                  <Select value={selectedFolderId} onValueChange={setSelectedFolderId}>
+                  <Select value={selectedFolderId || "NONE"} onValueChange={(value) => setSelectedFolderId(value === "NONE" ? null : value)}>
                     <SelectTrigger id="folder">
                       <SelectValue placeholder="Selecione uma pasta" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Sem pasta</SelectItem>
+                      <SelectItem value="NONE">Sem pasta</SelectItem>
                       {folders.map((folder) => (
                         <SelectItem key={folder.id} value={folder.id}>
                           {folder.name}

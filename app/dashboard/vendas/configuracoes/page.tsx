@@ -45,9 +45,9 @@ import { useToast } from "@/hooks/use-toast"
 import {
   paymentMethodsApi,
   type PaymentMethod,
-  type PaymentMethodType,
+  type SefazPaymentCode,
   type CreatePaymentMethodDto,
-  paymentMethodTypeLabels,
+  sefazPaymentCodeLabels,
 } from "@/lib/api/payment-methods"
 
 export default function ConfiguracoesVendasPage() {
@@ -62,7 +62,7 @@ export default function ConfiguracoesVendasPage() {
   const [formData, setFormData] = useState<CreatePaymentMethodDto>({
     name: "",
     code: "",
-    type: "PIX",
+    sefazCode: "PIX_DINAMICO", // Código SEFAZ padrão
     active: true,
     allowInstallments: false,
     maxInstallments: 1,
@@ -108,7 +108,7 @@ export default function ConfiguracoesVendasPage() {
       setFormData({
         name: method.name,
         code: method.code,
-        type: method.type,
+        sefazCode: method.sefazCode,
         active: method.active,
         allowInstallments: method.allowInstallments,
         maxInstallments: method.maxInstallments,
@@ -129,7 +129,7 @@ export default function ConfiguracoesVendasPage() {
       setFormData({
         name: "",
         code: "",
-        type: "PIX",
+        sefazCode: "PIX_DINAMICO",
         active: true,
         allowInstallments: false,
         maxInstallments: 1,
@@ -314,37 +314,56 @@ export default function ConfiguracoesVendasPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="type">Tipo *</Label>
-                      <Select
-                        value={formData.type}
-                        onValueChange={(value: PaymentMethodType) =>
-                          setFormData({ ...formData, type: value })
-                        }
-                      >
-                        <SelectTrigger id="type">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(paymentMethodTypeLabels).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center space-x-2 pt-8">
-                      <Switch
-                        id="active"
-                        checked={formData.active}
-                        onCheckedChange={(checked) =>
-                          setFormData({ ...formData, active: checked })
-                        }
-                      />
-                      <Label htmlFor="active">Ativo</Label>
-                    </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="sefazCode">
+                      Código SEFAZ * 
+                      <span className="ml-1 text-xs text-amber-600">(Obrigatório para NF-e)</span>
+                    </Label>
+                    <Select
+                      value={formData.sefazCode}
+                      onValueChange={(value: SefazPaymentCode) =>
+                        setFormData({ ...formData, sefazCode: value })
+                      }
+                    >
+                      <SelectTrigger id="sefazCode">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(sefazPaymentCodeLabels).map(([key, { code, description }]) => (
+                          <SelectItem key={key} value={key}>
+                            <span className="flex items-center gap-2">
+                              <Badge variant="outline" className="font-mono text-xs">
+                                {code}
+                              </Badge>
+                              {description}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Código utilizado na emissão de NF-e conforme tabela SEFAZ
+                    </p>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="active"
+                      checked={formData.active}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, active: checked })
+                      }
+                    />
+                    <Label htmlFor="active">Ativo</Label>
+                  </div>
+
+                  {/* Alerta informativo sobre código SEFAZ */}
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 md:col-span-2">
+                    <p className="text-sm text-blue-800">
+                      <strong>ℹ️ Dica:</strong> O código SEFAZ define o tipo de pagamento 
+                      na NF-e. Escolha o código que melhor representa o método de pagamento. 
+                      Este código será usado na tag <code className="px-1 bg-blue-100 rounded">tPag</code> da nota fiscal.
+                    </p>
                   </div>
                 </div>
 
@@ -637,8 +656,8 @@ export default function ConfiguracoesVendasPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nome</TableHead>
-                      <TableHead>Tipo</TableHead>
                       <TableHead>Código</TableHead>
+                      <TableHead>Código SEFAZ</TableHead>
                       <TableHead className="text-center">Parcelamento</TableHead>
                       <TableHead className="text-center">Taxa</TableHead>
                       <TableHead className="text-center">Status</TableHead>
@@ -650,12 +669,17 @@ export default function ConfiguracoesVendasPage() {
                       <TableRow key={method.id}>
                         <TableCell className="font-medium">{method.name}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">
-                            {paymentMethodTypeLabels[method.type]}
-                          </Badge>
+                          <code className="text-xs bg-muted px-2 py-1 rounded">{method.code}</code>
                         </TableCell>
                         <TableCell>
-                          <code className="text-xs">{method.code}</code>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="font-mono text-xs">
+                              {sefazPaymentCodeLabels[method.sefazCode]?.code || method.sefazCode}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">
+                              {sefazPaymentCodeLabels[method.sefazCode]?.description || '—'}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell className="text-center">
                           {method.allowInstallments ? (

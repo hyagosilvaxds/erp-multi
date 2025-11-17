@@ -221,26 +221,65 @@ export const authApi = {
 // API de Empresas (Admin)
 // ============================================
 
+export type RegimeTributario = 'SIMPLES_NACIONAL' | 'SIMPLES_NACIONAL_EXCESSO' | 'REGIME_NORMAL'
+export type AmbienteFiscal = 'HOMOLOGACAO' | 'PRODUCAO'
+
 export interface CompanyAdmin {
   id: string
+  
+  // Dados Cadastrais Básicos (OBRIGATÓRIOS)
   razaoSocial: string
   nomeFantasia: string
   cnpj: string
   inscricaoEstadual: string | null
   inscricaoMunicipal: string | null
-  regimeTributario: string | null
+  regimeTributario: RegimeTributario | string | null
+  cnaePrincipal: string | null
+  
+  // Contatos (RECOMENDADOS)
   email: string | null
   telefone: string | null
   celular: string | null
+  site: string | null
+  
+  // Endereço Completo (OBRIGATÓRIO)
+  logradouro: string | null
+  numero: string | null
+  complemento: string | null
+  bairro: string | null
   cidade: string | null
   estado: string | null
   cep: string | null
+  codigoMunicipioIBGE: string | null
+  codigoPais: string | null
+  
+  // Configurações Fiscais (OBRIGATÓRIOS para NFe)
+  ambienteFiscal: AmbienteFiscal | string | null
+  serieNFe: string | null
+  ultimoNumeroNFe: number | null
+  cfopPadrao: string | null
+  
+  // Certificado Digital
+  certificadoDigitalPath: string | null
+  certificadoDigitalSenha: string | null
+  certificadoDigitalVencimento: string | null
+  
+  // Responsável Técnico (OBRIGATÓRIO a partir de 2024)
+  respTecCNPJ: string | null
+  respTecContato: string | null
+  respTecEmail: string | null
+  respTecFone: string | null
+  respTecIdCSRT: string | null
+  respTecCSRT: string | null
+  
+  // Metadados
   active: boolean
   situacaoCadastral: string
   logoUrl: string | null
+  dataAbertura: string | null
   createdAt: string
   updatedAt: string
-  _count: {
+  _count?: {
     users: number
   }
 }
@@ -448,6 +487,35 @@ export const companiesApi = {
       throw error
     }
   },
+
+  /**
+   * Atualiza a numeração de NF-e da empresa (Admin only)
+   * Requer permissão companies.update e role admin
+   */
+  async updateNFeNumeracao(companyId: string, data: {
+    ultimoNumeroNFe?: number
+    proximoNumeroNFe?: number
+    serieNFe?: string
+  }): Promise<any> {
+    try {
+      const selectedCompany = authApi.getSelectedCompany()
+      
+      if (!selectedCompany) {
+        throw new Error('Nenhuma empresa selecionada')
+      }
+
+      const response = await apiClient.patch(`/companies/admin/${companyId}/nfe-numeracao`, data, {
+        headers: {
+          'x-company-id': selectedCompany.id,
+        },
+      })
+      
+      return response.data
+    } catch (error: any) {
+      // Re-lançar o erro original para preservar a estrutura da API
+      throw error
+    }
+  },
 }
 
 // ============================================
@@ -528,6 +596,68 @@ export const auditApi = {
     } catch (error: any) {
       // Re-lançar o erro original para preservar a estrutura da API
       throw error
+    }
+  },
+}
+
+// API de administração (apenas para usuários admin)
+export interface CreateCompanyRequest {
+  razaoSocial: string
+  cnpj: string
+  regimeTributario: 'SIMPLES_NACIONAL' | 'SIMPLES_NACIONAL_EXCESSO' | 'REGIME_NORMAL'
+  active: boolean
+  nomeFantasia?: string
+  inscricaoEstadual?: string
+  cnaePrincipal?: string
+  cnaeSecundarios?: string[] // Array de CNAEs secundários
+  email?: string
+  site?: string
+  cep?: string
+  logradouro?: string
+  numero?: string
+  complemento?: string
+  bairro?: string
+  cidade?: string
+  estado?: string
+  codigoMunicipioIBGE?: string
+  telefone?: string
+  celular?: string
+  cfopPadrao?: string
+  serieNFe?: string
+  ambienteFiscal?: 'HOMOLOGACAO' | 'PRODUCAO'
+  respTecCNPJ?: string
+  respTecContato?: string
+  respTecEmail?: string
+  respTecFone?: string
+}
+
+export interface CompanyResponse {
+  id: string
+  razaoSocial: string
+  nomeFantasia?: string
+  cnpj: string
+  inscricaoEstadual?: string
+  inscricaoMunicipal?: string
+  regimeTributario: string
+  email?: string
+  telefone?: string
+  cidade?: string
+  estado?: string
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export const adminApi = {
+  /**
+   * Cria uma nova empresa (apenas admin)
+   */
+  async createCompany(data: CreateCompanyRequest): Promise<CompanyResponse> {
+    try {
+      const response = await apiClient.post<CompanyResponse>('/companies', data)
+      return response.data
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || 'Erro ao criar empresa')
     }
   },
 }

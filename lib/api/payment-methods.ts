@@ -26,12 +26,35 @@ export interface InstallmentTemplate {
   updatedAt: string
 }
 
+// Códigos SEFAZ para formas de pagamento (NF-e)
+export type SefazPaymentCode = 
+  | "DINHEIRO"                            // 01
+  | "CHEQUE"                              // 02
+  | "CARTAO_CREDITO"                      // 03
+  | "CARTAO_DEBITO"                       // 04
+  | "CREDITO_LOJA"                        // 05
+  | "VALE_ALIMENTACAO"                    // 10
+  | "VALE_REFEICAO"                       // 11
+  | "VALE_PRESENTE"                       // 12
+  | "VALE_COMBUSTIVEL"                    // 13
+  | "DUPLICATA_MERCANTIL"                 // 14
+  | "BOLETO_BANCARIO"                     // 15
+  | "DEPOSITO_BANCARIO"                   // 16
+  | "PIX_DINAMICO"                        // 17
+  | "TRANSFERENCIA"                       // 18
+  | "PROGRAMA_FIDELIDADE"                 // 19
+  | "PIX_ESTATICO"                        // 20
+  | "CREDITO_EM_LOJA"                     // 21
+  | "PAGAMENTO_ELETRONICO_NAO_INFORMADO"  // 22
+  | "SEM_PAGAMENTO"                       // 90
+  | "OUTROS"                              // 99
+
 export interface PaymentMethod {
   id: string
   companyId: string
   name: string
   code: string
-  type: PaymentMethodType
+  sefazCode: SefazPaymentCode // ⚠️ OBRIGATÓRIO para emissão de NF-e
   active: boolean
   allowInstallments: boolean
   maxInstallments: number
@@ -48,7 +71,7 @@ export interface PaymentMethod {
 export interface CreatePaymentMethodDto {
   name: string
   code: string
-  type: PaymentMethodType
+  sefazCode: SefazPaymentCode // ⚠️ OBRIGATÓRIO
   active?: boolean
   allowInstallments?: boolean
   maxInstallments?: number
@@ -427,7 +450,7 @@ export const paymentMethodsApi = {
   deleteTemplate: deleteInstallmentTemplate,
 }
 
-// Helper: Nomes amigáveis dos tipos
+// Helper: Nomes amigáveis dos tipos (mantido para compatibilidade com código existente)
 export const paymentMethodTypeLabels: Record<PaymentMethodType, string> = {
   CASH: "Dinheiro",
   CREDIT_CARD: "Cartão de Crédito",
@@ -437,4 +460,28 @@ export const paymentMethodTypeLabels: Record<PaymentMethodType, string> = {
   BANK_TRANSFER: "Transferência Bancária",
   CHECK: "Cheque",
   OTHER: "Outro",
+}
+
+// Helper: Descrições dos códigos SEFAZ
+export const sefazPaymentCodeLabels: Record<SefazPaymentCode, { code: string; description: string }> = {
+  DINHEIRO: { code: "01", description: "Dinheiro" },
+  CHEQUE: { code: "02", description: "Cheque" },
+  CARTAO_CREDITO: { code: "03", description: "Cartão de Crédito" },
+  CARTAO_DEBITO: { code: "04", description: "Cartão de Débito" },
+  CREDITO_LOJA: { code: "05", description: "Crédito Loja" },
+  VALE_ALIMENTACAO: { code: "10", description: "Vale Alimentação" },
+  VALE_REFEICAO: { code: "11", description: "Vale Refeição" },
+  VALE_PRESENTE: { code: "12", description: "Vale Presente" },
+  VALE_COMBUSTIVEL: { code: "13", description: "Vale Combustível" },
+  DUPLICATA_MERCANTIL: { code: "14", description: "Duplicata Mercantil" },
+  BOLETO_BANCARIO: { code: "15", description: "Boleto Bancário" },
+  DEPOSITO_BANCARIO: { code: "16", description: "Depósito Bancário" },
+  PIX_DINAMICO: { code: "17", description: "PIX Dinâmico (QR Code gerado na hora)" },
+  TRANSFERENCIA: { code: "18", description: "Transferência / Carteira Digital" },
+  PROGRAMA_FIDELIDADE: { code: "19", description: "Programa de Fidelidade / Cashback" },
+  PIX_ESTATICO: { code: "20", description: "PIX Estático (QR Code fixo / Chave PIX)" },
+  CREDITO_EM_LOJA: { code: "21", description: "Crédito em Loja (Private Label)" },
+  PAGAMENTO_ELETRONICO_NAO_INFORMADO: { code: "22", description: "Pagamento Eletrônico não Informado" },
+  SEM_PAGAMENTO: { code: "90", description: "Sem pagamento (Bonificação / Amostra)" },
+  OUTROS: { code: "99", description: "Outros" },
 }

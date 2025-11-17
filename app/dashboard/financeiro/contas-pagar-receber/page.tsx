@@ -22,6 +22,7 @@ import {
   Loader2,
   Edit,
   Trash2,
+  ShoppingCart,
 } from "lucide-react"
 import Link from "next/link"
 import { 
@@ -403,6 +404,12 @@ export default function ContasPagarReceber() {
                           <div className="flex items-center gap-2">
                             <p className="font-semibold text-foreground">{conta.customerName}</p>
                             {getStatusBadge(conta.status)}
+                            {conta.sale && (
+                              <Badge variant="outline" className="gap-1 text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                <ShoppingCart className="h-3 w-3" />
+                                Venda #{conta.sale.code}
+                              </Badge>
+                            )}
                             {conta.attachments && conta.attachments.length > 0 && (
                               <Badge variant="outline" className="gap-1 text-xs">
                                 <Paperclip className="h-3 w-3" />
@@ -418,6 +425,11 @@ export default function ContasPagarReceber() {
                             </span>
                             <span>Parcela: {conta.installmentNumber}/{conta.totalInstallments}</span>
                             {conta.documentNumber && <span>Doc: {conta.documentNumber}</span>}
+                            {conta.sale && (
+                              <span className="text-blue-600 font-medium">
+                                Venda Total: {conta.sale.totalAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -433,6 +445,17 @@ export default function ContasPagarReceber() {
                           )}
                         </div>
                         <div className="flex gap-2">
+                          {conta.sale && (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => conta.sale && router.push(`/dashboard/vendas/${conta.sale.id}`)}
+                              className="gap-1"
+                            >
+                              <ShoppingCart className="h-3 w-3" />
+                              Ver Venda
+                            </Button>
+                          )}
                           {conta.status !== "RECEBIDO" && conta.status !== "CANCELADO" && (
                             <Button size="sm" variant="default">
                               <DollarSign className="mr-1 h-4 w-4" />

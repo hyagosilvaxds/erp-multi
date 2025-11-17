@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Filter, Download, Package, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
+import { Plus, Filter, Download, Package, TrendingUp, TrendingDown, RefreshCw, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Button } from '@/components/ui/button'
@@ -339,7 +339,7 @@ export default function StockMovementsPage() {
                       <TableHead>Estoque Novo</TableHead>
                       <TableHead>Local</TableHead>
                       <TableHead>Motivo</TableHead>
-                      
+                      <TableHead>Venda</TableHead>
                       <TableHead>Documento</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -376,7 +376,25 @@ export default function StockMovementsPage() {
                         <TableCell className="max-w-xs truncate">
                           {movement.reason || '-'}
                         </TableCell>
-                       
+                        <TableCell>
+                          {movement.sale ? (
+                            <div className="flex flex-col gap-1">
+                              <Badge 
+                                variant="outline" 
+                                className="w-fit gap-1 text-xs bg-blue-50 text-blue-700 border-blue-200 cursor-pointer hover:bg-blue-100"
+                                onClick={() => router.push(`/dashboard/vendas/${movement.sale?.id}`)}
+                              >
+                                <ShoppingCart className="h-3 w-3" />
+                                {movement.sale.code}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {movement.sale.customer?.name || movement.sale.customer?.companyName || 'Cliente'}
+                              </span>
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
                         <TableCell>
                           {movement.document ? (
                             <DocumentDownloadButton

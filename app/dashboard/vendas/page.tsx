@@ -216,26 +216,6 @@ export default function VendasPage() {
     }
   }
 
-  const handleCompleteSale = async (saleId: string) => {
-    try {
-      setActionLoading(true)
-      await salesApi.complete(saleId)
-      toast({
-        title: "Venda concluída",
-        description: "A venda foi marcada como concluída.",
-      })
-      loadSales()
-    } catch (error: any) {
-      toast({
-        title: "Erro ao concluir venda",
-        description: error.response?.data?.message || "Tente novamente mais tarde.",
-        variant: "destructive",
-      })
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
   const handleExportSalePDF = async (sale: Sale) => {
     try {
       setExportingPDF(sale.id)
@@ -652,7 +632,7 @@ export default function VendasPage() {
                                   Editar
                                 </DropdownMenuItem>
                               )}
-                              {(sale.status === "QUOTE" || sale.status === "DRAFT" || sale.status === "PENDING_APPROVAL") && (
+                              {(sale.status !== "APPROVED" && sale.status !== "COMPLETED" && sale.status !== "CANCELED") && (
                                 <>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem onClick={() => openApproveDialog(sale)}>
@@ -660,12 +640,6 @@ export default function VendasPage() {
                                     Aprovar {sale.status === "QUOTE" ? "orçamento" : "venda"}
                                   </DropdownMenuItem>
                                 </>
-                              )}
-                              {sale.status === "APPROVED" && (
-                                <DropdownMenuItem onClick={() => handleCompleteSale(sale.id)}>
-                                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                                  Marcar como concluída
-                                </DropdownMenuItem>
                               )}
                               {(sale.status !== "COMPLETED" && sale.status !== "CANCELED") && (
                                 <>

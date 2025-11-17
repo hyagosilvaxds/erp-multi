@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ArrowLeft, Plus, Trash2, Loader2, Search } from "lucide-react"
-import { salesApi, CreateSaleDto } from "@/lib/api/sales"
+import { salesApi, CreateSaleDto, ShippingModality, shippingModalityLabels } from "@/lib/api/sales"
 import { customersApi, Customer } from "@/lib/api/customers"
 import { paymentMethodsApi } from "@/lib/api/payment-methods"
 import { productsApi, Product as ApiProduct, stockLocationsApi, StockLocation } from "@/lib/api/products"
@@ -86,6 +86,7 @@ export default function NovaVendaPage() {
   
   // Valores adicionais
   const [shippingCost, setShippingCost] = useState(0)
+  const [shippingModality, setShippingModality] = useState<ShippingModality>(9)
   const [otherCharges, setOtherCharges] = useState(0)
   const [otherChargesDesc, setOtherChargesDesc] = useState("")
   
@@ -386,6 +387,7 @@ export default function NovaVendaPage() {
         discountPercent: discountPercent > 0 ? discountPercent : undefined,
         discountAmount: discountAmount > 0 ? discountAmount : undefined,
         shippingCost: shippingCost > 0 ? shippingCost : undefined,
+        shippingModality,
         otherCharges: otherCharges > 0 ? otherCharges : undefined,
         otherChargesDesc: otherChargesDesc.trim() || undefined,
         notes: notes.trim() || undefined,
@@ -856,6 +858,29 @@ export default function NovaVendaPage() {
                       value={shippingCost}
                       onChange={(e) => setShippingCost(Number(e.target.value))}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="shippingModality">Modalidade de Frete</Label>
+                    <Select
+                      value={String(shippingModality)}
+                      onValueChange={(value) => setShippingModality(Number(value) as ShippingModality)}
+                    >
+                      <SelectTrigger id="shippingModality">
+                        <SelectValue placeholder="Selecione a modalidade" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">{shippingModalityLabels[0]}</SelectItem>
+                        <SelectItem value="1">{shippingModalityLabels[1]}</SelectItem>
+                        <SelectItem value="2">{shippingModalityLabels[2]}</SelectItem>
+                        <SelectItem value="3">{shippingModalityLabels[3]}</SelectItem>
+                        <SelectItem value="4">{shippingModalityLabels[4]}</SelectItem>
+                        <SelectItem value="9">{shippingModalityLabels[9]}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Código SEFAZ de modalidade de frete para NF-e
+                    </p>
                   </div>
 
                   <div className="space-y-2">

@@ -1595,6 +1595,7 @@ export interface AccountReceivable {
   customerName: string
   customerDocument: string
   customerId?: string | null
+  saleId?: string | null // ID da venda relacionada
   description: string
   documentNumber?: string | null
   originalAmount: number
@@ -1621,6 +1622,18 @@ export interface AccountReceivable {
   category?: FinancialCategory
   centroCusto?: CentroCusto
   contaContabil?: ContaContabil
+  sale?: { // Dados da venda relacionada
+    id: string
+    code: string
+    status: string
+    totalAmount: number
+    customer?: {
+      id: string
+      name?: string | null
+      companyName?: string | null
+      personType: 'FISICA' | 'JURIDICA'
+    }
+  }
   createdAt: string
   updatedAt: string
 }
@@ -1692,6 +1705,7 @@ export const accountsReceivableApi = {
     endDate?: string
     categoryId?: string
     customerId?: string
+    saleId?: string // Filtrar por venda específica
   }): Promise<AccountReceivable[]> {
     try {
       const selectedCompany = authApi.getSelectedCompany()

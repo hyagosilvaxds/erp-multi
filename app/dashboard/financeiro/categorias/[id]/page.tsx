@@ -33,7 +33,7 @@ export default function EditarCategoria() {
     description: "",
     color: "#3b82f6",
     icon: "",
-    parentId: "",
+    parentId: null as string | null,
     active: true,
   })
 
@@ -221,14 +221,14 @@ export default function EditarCategoria() {
               <div className="space-y-2">
                 <Label htmlFor="parentId">Categoria Pai (opcional)</Label>
                 <Select
-                  value={formData.parentId}
-                  onValueChange={(value) => setFormData({ ...formData, parentId: value })}
+                  value={formData.parentId || "NONE"}
+                  onValueChange={(value) => setFormData({ ...formData, parentId: value === "NONE" ? null : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Nenhuma (categoria principal)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Nenhuma (categoria principal)</SelectItem>
+                    <SelectItem value="NONE">Nenhuma (categoria principal)</SelectItem>
                     {categoriasFiltradas.map((cat) => (
                       <SelectItem key={cat.id} value={cat.id}>
                         {cat.name}

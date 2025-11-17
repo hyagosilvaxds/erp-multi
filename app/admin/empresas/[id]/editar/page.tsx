@@ -135,8 +135,8 @@ export default function EditarEmpresaPage() {
     codigoEstadoIBGE: "",
     cfopPadrao: "",
     serieNFe: "",
-    serieNFCe: "",
-    serieNFSe: "",
+    ultimoNumeroNFe: 0,
+    proximoNumeroNFe: 0,
     ambienteFiscal: "",
   })
 
@@ -291,8 +291,8 @@ export default function EditarEmpresaPage() {
         codigoEstadoIBGE: data.codigoEstadoIBGE || "",
         cfopPadrao: data.cfopPadrao || "",
         serieNFe: data.serieNFe || "",
-        serieNFCe: data.serieNFCe || "",
-        serieNFSe: data.serieNFSe || "",
+        ultimoNumeroNFe: data.ultimoNumeroNFe || 0,
+        proximoNumeroNFe: data.proximoNumeroNFe || 0,
         ambienteFiscal: data.ambienteFiscal || "",
       })
       
@@ -336,20 +336,20 @@ export default function EditarEmpresaPage() {
             updateData[key] = value
           } else if (!Array.isArray(value)) {
             // Remover máscara do CEP (apenas dígitos)
-            if (key === 'cep') {
+            if (key === 'cep' && typeof value === 'string') {
               updateData[key] = value.replace(/\D/g, '')
             }
             // Remover máscara do CNPJ (apenas dígitos)
-            else if (key === 'cnpj') {
+            else if (key === 'cnpj' && typeof value === 'string') {
               updateData[key] = value.replace(/\D/g, '')
             }
             // Remover máscara dos telefones (apenas dígitos)
-            else if (key === 'telefone' || key === 'celular') {
+            else if ((key === 'telefone' || key === 'celular') && typeof value === 'string') {
               updateData[key] = value.replace(/\D/g, '')
             }
             // Converter datas para ISO-8601
             else if (key === 'dataAbertura' && value) {
-              updateData[key] = new Date(value).toISOString()
+              updateData[key] = new Date(value as string).toISOString()
             }
             else {
               updateData[key] = value
@@ -361,6 +361,15 @@ export default function EditarEmpresaPage() {
       console.log('📤 Dados para atualização:', updateData)
       
       const result = await companiesApi.updateCompany(params.id as string, updateData)
+      
+      // Atualizar numeração NF-e separadamente se houver mudanças
+      if (formData.serieNFe || formData.ultimoNumeroNFe || formData.proximoNumeroNFe) {
+        await companiesApi.updateNFeNumeracao(params.id as string, {
+          serieNFe: formData.serieNFe || undefined,
+          ultimoNumeroNFe: formData.ultimoNumeroNFe || undefined,
+          proximoNumeroNFe: formData.proximoNumeroNFe || undefined,
+        })
+      }
       
       toast({
         title: "Empresa atualizada com sucesso!",
@@ -1363,7 +1372,7 @@ export default function EditarEmpresaPage() {
                 <Separator />
 
                 <div>
-                  <h4 className="text-sm font-medium mb-4">Numeração de Notas Fiscais</h4>
+                  <h4 className="text-sm font-medium mb-4">Numeração de NF-e</h4>
                   <div className="grid gap-4 md:grid-cols-3">
                     <div className="space-y-2">
                       <Label htmlFor="serieNFe">Série NF-e</Label>
@@ -1375,22 +1384,30 @@ export default function EditarEmpresaPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="serieNFCe">Série NFC-e</Label>
+                      <Label htmlFor="ultimoNumeroNFe">Último Número NF-e</Label>
                       <Input
-                        id="serieNFCe"
-                        value={formData.serieNFCe}
-                        onChange={(e) => handleInputChange('serieNFCe', e.target.value)}
-                        placeholder="1"
+                        id="ultimoNumeroNFe"
+                        type="number"
+                        value={formData.ultimoNumeroNFe}
+                        onChange={(e) => handleInputChange('ultimoNumeroNFe', parseInt(e.target.value) || 0)}
+                        placeholder="0"
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Último número de NF-e emitido
+                      </p>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="serieNFSe">Série NFS-e</Label>
+                      <Label htmlFor="proximoNumeroNFe">Próximo Número NF-e</Label>
                       <Input
-                        id="serieNFSe"
-                        value={formData.serieNFSe}
-                        onChange={(e) => handleInputChange('serieNFSe', e.target.value)}
+                        id="proximoNumeroNFe"
+                        type="number"
+                        value={formData.proximoNumeroNFe}
+                        onChange={(e) => handleInputChange('proximoNumeroNFe', parseInt(e.target.value) || 0)}
                         placeholder="1"
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Próximo número a ser usado
+                      </p>
                     </div>
                   </div>
                 </div>

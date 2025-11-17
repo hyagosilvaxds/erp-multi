@@ -5,8 +5,29 @@ import { authApi } from "./auth"
 // Types & Interfaces
 // ============================================
 
-export type SaleStatus = "QUOTE" | "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "COMPLETED" | "CANCELED"
+export type SaleStatus = "QUOTE" | "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "APPROVED" | "COMPLETED" | "CANCELED"
 export type CreditAnalysisStatus = "PENDING" | "APPROVED" | "REJECTED"
+
+// Modalidade de Frete SEFAZ
+export type ShippingModality = 0 | 1 | 2 | 3 | 4 | 9
+
+export const shippingModalityLabels: Record<ShippingModality, string> = {
+  0: "Por conta do Emitente (CIF)",
+  1: "Por conta do Destinatário (FOB)",
+  2: "Por conta de Terceiros",
+  3: "Transporte Próprio do Emitente",
+  4: "Transporte Próprio do Destinatário",
+  9: "Sem Frete",
+}
+
+export const shippingModalityDescriptions: Record<ShippingModality, string> = {
+  0: "Vendedor responsável pelo frete (CIF)",
+  1: "Comprador responsável pelo frete (FOB)",
+  2: "Transportadora contratada por terceiros",
+  3: "Frota própria do vendedor",
+  4: "Frota própria do comprador",
+  9: "Venda sem transporte (ex: retirada no local)",
+}
 
 export interface SaleItem {
   id: string
@@ -59,6 +80,7 @@ export interface Sale {
   discountPercent: number
   discount?: number // Mantido para compatibilidade
   shippingCost: number
+  shippingModality: ShippingModality
   shipping?: number // Mantido para compatibilidade
   otherCharges: number
   otherChargesDesc: string | null
@@ -97,12 +119,54 @@ export interface Sale {
   createdAt: string
   updatedAt: string
   items: SaleItem[]
+  nfes?: Array<{
+    id: string
+    numero: number
+    serie: string
+    status: string
+    chaveAcesso?: string
+  }>
+  accountsReceivable?: Array<{
+    id: string
+    originalAmount: number
+    receivedAmount: number
+    remainingAmount: number
+    dueDate: string
+    receiptDate?: string
+    status: string
+    paymentMethod?: string
+  }>
+  stockMovements?: Array<{
+    id: string
+    type: string
+    quantity: string | number
+    previousStock: string | number
+    newStock: string | number
+    reason?: string
+    notes?: string
+    product?: {
+      name: string
+      sku?: string
+    }
+    location?: {
+      name: string
+    }
+  }>
+  installmentDetails?: Array<{
+    installmentNumber: number
+    dueDate: string
+    amount: number
+  }>
   customer?: {
     id: string
     personType: "FISICA" | "JURIDICA"
     name: string
     cpf?: string
     cnpj?: string
+    companyName?: string
+    tradeName?: string
+    stateRegistration?: string
+    stateRegistrationExempt?: boolean
     email: string | null
     phone: string | null
     mobile: string | null
@@ -110,6 +174,18 @@ export interface Sale {
     cpfCnpj?: string // Mantido para compatibilidade
     creditLimit?: string
     active: boolean
+    addresses?: Array<{
+      id: string
+      type: string
+      street: string
+      number: string
+      complement?: string
+      neighborhood: string
+      city: string
+      state: string
+      zipCode: string
+      country?: string
+    }>
   }
   paymentMethod?: {
     id: string
@@ -161,6 +237,7 @@ export interface CreateSaleDto {
   
   // Valores adicionais
   shippingCost?: number
+  shippingModality?: ShippingModality
   otherCharges?: number
   otherChargesDesc?: string
   
@@ -196,6 +273,7 @@ export interface UpdateSaleDto {
   installments?: number
   discount?: number
   shipping?: number
+  shippingModality?: ShippingModality
   notes?: string
   deliveryDate?: string
   saleDate?: string
@@ -832,6 +910,7 @@ export const saleStatusLabels: Record<SaleStatus, string> = {
   QUOTE: "Orçamento",
   DRAFT: "Rascunho",
   PENDING_APPROVAL: "Aguardando Aprovação",
+  CONFIRMED: "Confirmado",
   APPROVED: "Aprovado",
   COMPLETED: "Concluído",
   CANCELED: "Cancelado",
@@ -842,6 +921,7 @@ export const saleStatusColors: Record<SaleStatus, string> = {
   QUOTE: "bg-blue-100 text-blue-800",
   DRAFT: "bg-gray-100 text-gray-800",
   PENDING_APPROVAL: "bg-yellow-100 text-yellow-800",
+  CONFIRMED: "bg-cyan-100 text-cyan-800",
   APPROVED: "bg-green-100 text-green-800",
   COMPLETED: "bg-emerald-100 text-emerald-800",
   CANCELED: "bg-red-100 text-red-800",

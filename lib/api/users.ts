@@ -86,6 +86,14 @@ export interface GetAllUsersParams {
   active?: boolean
 }
 
+export interface Role {
+  id: string
+  name: string
+  description: string
+  createdAt: string
+  updatedAt: string
+}
+
 // ==========================================
 // USERS API
 // ==========================================
@@ -213,6 +221,40 @@ export const usersApi = {
   getById: async (userId: string, companyId: string): Promise<UserDetail> => {
     try {
       const { data } = await apiClient.get<UserDetail>(`/users/${userId}`, {
+        headers: {
+          'x-company-id': companyId,
+        },
+      })
+      
+      return data
+    } catch (error: any) {
+      throw error
+    }
+  },
+
+  /**
+   * Criar um novo usuário
+   * 
+   * @param dto - Dados do novo usuário
+   * @param companyId - ID da empresa (usuário será vinculado automaticamente)
+   * @returns Usuário criado
+   * 
+   * @permission users.create
+   * 
+   * @example
+   * const newUser = await usersApi.create({
+   *   email: 'usuario@exemplo.com',
+   *   name: 'João da Silva',
+   *   password: 'senha123',
+   *   active: true
+   * }, 'company-uuid')
+   */
+  create: async (
+    dto: { email: string; name: string; password: string; active?: boolean },
+    companyId: string
+  ): Promise<UserDetail> => {
+    try {
+      const { data } = await apiClient.post<UserDetail>('/users', dto, {
         headers: {
           'x-company-id': companyId,
         },
@@ -417,6 +459,33 @@ export const usersApi = {
           'x-company-id': authCompanyId,
         },
       })
+    } catch (error: any) {
+      throw error
+    }
+  },
+
+  /**
+   * Listar todas as roles disponíveis no sistema
+   * 
+   * @returns Lista de roles
+   * 
+   * @example
+   * const roles = await usersApi.getRoles()
+   * // roles: [{ id: 'uuid', name: 'Gerente', description: '...' }, ...]
+   */
+  getRoles: async (): Promise<Role[]> => {
+    try {
+      const selectedCompany = await import('./auth').then(m => m.authApi.getSelectedCompany())
+      if (!selectedCompany) {
+        throw new Error('Nenhuma empresa selecionada')
+      }
+
+      const { data } = await apiClient.get('/roles', {
+        headers: {
+          'x-company-id': selectedCompany.id,
+        },
+      })
+      return data
     } catch (error: any) {
       throw error
     }

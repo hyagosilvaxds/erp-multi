@@ -230,6 +230,7 @@ export interface ViaCEPResponse {
   bairro: string
   localidade: string
   uf: string
+  ibge: string // Código IBGE do município
   erro?: boolean
 }
 

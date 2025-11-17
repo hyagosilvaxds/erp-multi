@@ -80,18 +80,36 @@ export default function EmpresasPage() {
     }
   }
 
-  const handleLoginAsCompany = (company: CompanyAdmin) => {
-    // Converter CompanyAdmin para Company format
-    const userCompanies = authApi.getCompanies()
-    const matchingCompany = userCompanies?.find((c) => c.id === company.id)
+  const handleLoginAsCompany = async (company: CompanyAdmin) => {
+    try {
+      // Buscar as empresas do usuário logado para pegar a role e permissões
+      const userCompanies = await authApi.getUserCompanies()
+      const matchingCompany = userCompanies?.find((c) => c.id === company.id)
 
-    if (matchingCompany) {
-      authApi.setSelectedCompany(matchingCompany)
-      router.push("/admin")
-    } else {
+      if (matchingCompany) {
+        // Salvar a empresa selecionada
+        authApi.setSelectedCompany(matchingCompany)
+        
+        toast({
+          title: "Empresa selecionada!",
+          description: `Acessando ${company.nomeFantasia}...`,
+        })
+
+        // Redirecionar para o dashboard
+        router.push("/dashboard")
+      } else {
+        toast({
+          title: "Erro",
+          description: "Você não tem acesso a esta empresa",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao entrar na empresa:', error)
+      
       toast({
-        title: "Erro",
-        description: "Você não tem acesso a esta empresa",
+        title: "Erro ao acessar empresa",
+        description: error.message || "Não foi possível acessar a empresa",
         variant: "destructive",
       })
     }
@@ -272,7 +290,7 @@ export default function EmpresasPage() {
                           <span className="text-sm text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell>{company._count.users}</TableCell>
+                      <TableCell>{company._count?.users || 0}</TableCell>
                       <TableCell>
                         <Badge variant={company.active ? "default" : "secondary"}>
                           {company.situacaoCadastral}

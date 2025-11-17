@@ -561,7 +561,9 @@ export interface StockMovement {
     id: string
     name: string
     code: string
+    address?: string
   }
+  saleId?: string | null // ID da venda relacionada
   documentId?: string
   document?: {
     id: string
@@ -593,6 +595,18 @@ export interface StockMovement {
     }
     createdAt: string
   }
+  sale?: { // Dados da venda relacionada
+    id: string
+    code: string
+    status: string
+    totalAmount: number
+    customer?: {
+      id: string
+      name?: string | null
+      companyName?: string | null
+      personType: 'FISICA' | 'JURIDICA'
+    }
+  }
   reason?: string
   notes?: string
   reference?: string
@@ -608,6 +622,7 @@ export interface StockMovement {
 export interface ListStockMovementsParams {
   type?: StockMovementType
   locationId?: string
+  saleId?: string // Filtrar por venda específica
   startDate?: string
   endDate?: string
   page?: number
@@ -1231,6 +1246,23 @@ export const productsApi = {
   ): Promise<ListStockMovementsResponse> => {
     const companyId = getCompanyId()
     const response = await apiClient.get(`/products/${productId}/stock-movements`, {
+      params,
+      headers: {
+        'x-company-id': companyId,
+      },
+    })
+    return response.data
+  },
+
+  /**
+   * Lista todas as movimentações de estoque (sem filtro de produto)
+   * Útil para buscar por saleId
+   */
+  getAllStockMovements: async (
+    params?: ListStockMovementsParams
+  ): Promise<ListStockMovementsResponse> => {
+    const companyId = getCompanyId()
+    const response = await apiClient.get('/products/stock-movements', {
       params,
       headers: {
         'x-company-id': companyId,

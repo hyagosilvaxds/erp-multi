@@ -75,7 +75,6 @@ export default function NewCustomerPage() {
   const [cnpj, setCnpj] = useState('')
   const [stateRegistration, setStateRegistration] = useState('')
   const [stateRegistrationExempt, setStateRegistrationExempt] = useState(false)
-  const [municipalRegistration, setMunicipalRegistration] = useState('')
   const [cnae, setCnae] = useState('')
   const [taxRegime, setTaxRegime] = useState<TaxRegime>('SIMPLES_NACIONAL')
   const [responsibleName, setResponsibleName] = useState('')
@@ -100,6 +99,7 @@ export default function NewCustomerPage() {
   const [neighborhood, setNeighborhood] = useState('')
   const [city, setCity] = useState('')
   const [state, setState] = useState('')
+  const [ibgeCode, setIbgeCode] = useState('')
   const [loadingCEP, setLoadingCEP] = useState(false)
 
   // Handlers com máscaras
@@ -127,6 +127,10 @@ export default function NewCustomerPage() {
         setState(address.uf)
         if (address.complemento) {
           setComplement(address.complemento)
+        }
+        // ViaCEP já retorna o código IBGE
+        if (address.ibge) {
+          setIbgeCode(address.ibge)
         }
         
         toast({
@@ -283,7 +287,6 @@ export default function NewCustomerPage() {
         data.cnpj = removeMask(cnpj)
         data.stateRegistration = stateRegistration || undefined
         data.stateRegistrationExempt = stateRegistrationExempt
-        data.municipalRegistration = municipalRegistration || undefined
         data.cnae = cnae ? removeMask(cnae) : undefined
         data.taxRegime = taxRegime
         data.responsibleName = responsibleName || undefined
@@ -304,6 +307,7 @@ export default function NewCustomerPage() {
             neighborhood,
             city,
             state,
+            ibgeCode: ibgeCode || undefined,
           },
         ]
       }
@@ -579,6 +583,9 @@ export default function NewCustomerPage() {
                             placeholder="Digite a IE"
                             disabled={stateRegistrationExempt}
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Obrigatório para emissão de NF-e se não for isento. Influencia no cálculo do ICMS.
+                          </p>
                         </div>
 
                         <div className="space-y-2 flex items-end">
@@ -590,16 +597,6 @@ export default function NewCustomerPage() {
                             />
                             <Label htmlFor="stateRegistrationExempt">Isento de IE</Label>
                           </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="municipalRegistration">Inscrição Municipal</Label>
-                          <Input
-                            id="municipalRegistration"
-                            value={municipalRegistration}
-                            onChange={(e) => setMunicipalRegistration(e.target.value)}
-                            placeholder="Digite a IM"
-                          />
                         </div>
 
                         <div className="space-y-2">
@@ -813,6 +810,21 @@ export default function NewCustomerPage() {
                         placeholder="UF"
                         maxLength={2}
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="ibgeCode">Código IBGE</Label>
+                      <Input
+                        id="ibgeCode"
+                        value={ibgeCode}
+                        onChange={(e) => setIbgeCode(e.target.value)}
+                        placeholder="3550308"
+                        maxLength={7}
+                        disabled={loadingCEP}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Preenchido automaticamente ao buscar CEP. Necessário para emissão de NF-e.
+                      </p>
                     </div>
                   </div>
                 </CardContent>

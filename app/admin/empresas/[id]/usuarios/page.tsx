@@ -7,9 +7,19 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { 
   ArrowLeft, 
   Search, 
@@ -19,9 +29,10 @@ import {
   X, 
   Edit,
   CheckCircle2,
-  XCircle
+  XCircle,
+  UserPlus
 } from "lucide-react"
-import { usersApi, type UserDetail, type UsersListResponse } from "@/lib/api/users"
+import { usersApi, type UserDetail, type UsersListResponse, type Role } from "@/lib/api/users"
 import { authApi } from "@/lib/api/auth"
 import { useToast } from "@/hooks/use-toast"
 
@@ -38,6 +49,25 @@ export default function UsuariosEmpresaPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [activeFilter, setActiveFilter] = useState<string>("all")
 
+  // Dados adicionais
+  const [allUsers, setAllUsers] = useState<UserDetail[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
+
+  // Dialogs
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
+  const [linkSubmitting, setLinkSubmitting] = useState(false)
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false)
+  const [roleSubmitting, setRoleSubmitting] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
+
+  // Link form
+  const [selectedUserId, setSelectedUserId] = useState<string>('')
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('')
+  const [linkActive, setLinkActive] = useState(true)
+
+  // Change role form
+  const [newRoleId, setNewRoleId] = useState<string>('')
+
   // Debounce do termo de busca
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -53,6 +83,24 @@ export default function UsuariosEmpresaPage() {
       loadUsers()
     }
   }, [companyId, debouncedSearch, activeFilter])
+
+  // Carregar roles e todos usuários uma vez
+  useEffect(() => {
+    loadRolesAndAllUsers()
+  }, [])
+
+  const loadRolesAndAllUsers = async () => {
+    try {
+      const [rolesData, allUsersData] = await Promise.all([
+        usersApi.getRoles(),
+        usersApi.getAll(),
+      ])
+      setRoles(rolesData)
+      setAllUsers(allUsersData.data)
+    } catch (error: any) {
+      console.error('❌ Erro ao carregar dados:', error)
+    }
+  }
 
   const loadUsers = async () => {
     try {
@@ -110,6 +158,144 @@ export default function UsuariosEmpresaPage() {
     return userCompany?.active && user.active
   }
 
+  const handleOpenLinkDialog = () => {
+    setSelectedUserId('')
+    const defaultRole = roles.find(r => r.name === 'Gerente')
+    setSelectedRoleId(defaultRole?.id || '')
+    setLinkActive(true)
+    setLinkDialogOpen(true)
+  }
+
+  const handleLinkUser = async () => {
+    try {
+      setLinkSubmitting(true)
+
+      if (!selectedUserId || !selectedRoleId) {
+        toast({
+          title: "Erro",
+          description: "Selecione um usuário e uma role",
+          variant: "destructive",
+        })
+        return
+      }
+
+      await usersApi.linkCompany(selectedUserId, companyId, {
+        companyId,
+        roleId: selectedRoleId,
+        active: linkActive,
+      })
+
+      toast({
+        title: "Sucesso",
+        description: "Usuário vinculado à empresa",
+      })
+
+      setLinkDialogOpen(false)
+      loadUsers()
+      loadRolesAndAllUsers() // Atualizar lista de usuários disponíveis
+    } catch (error: any) {
+      console.error('❌ Erro ao vincular usuário:', error)
+      
+      const errorMessage = error.response?.data?.message || "Não foi possível vincular o usuário"
+      
+      toast({
+        title: "Erro ao vincular usuário",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setLinkSubmitting(false)
+    }
+  }
+
+  const handleUnlinkUser = async (userId: string, userName: string) => {
+    if (!confirm(`Deseja realmente desvincular ${userName} desta empresa?`)) {
+      return
+    }
+
+    try {
+      await usersApi.unlinkCompany(userId, companyId, companyId)
+
+      toast({
+        title: "Sucesso",
+        description: "Usuário desvinculado da empresa",
+      })
+
+      loadUsers()
+      loadRolesAndAllUsers() // Atualizar lista de usuários disponíveis
+    } catch (error: any) {
+      console.error('❌ Erro ao desvincular usuário:', error)
+      
+      toast({
+        title: "Erro ao desvincular usuário",
+        description: error.response?.data?.message || "Não foi possível desvincular o usuário",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleOpenRoleDialog = (user: UserDetail) => {
+    setSelectedUser(user)
+    const userCompany = user.companies.find((c) => c.companyId === companyId)
+    setNewRoleId(userCompany?.roleId || '')
+    setRoleDialogOpen(true)
+  }
+
+  const handleChangeRole = async () => {
+    if (!selectedUser) return
+
+    try {
+      setRoleSubmitting(true)
+
+      await usersApi.updateUserRole(selectedUser.id, companyId, newRoleId)
+
+      toast({
+        title: "Sucesso",
+        description: "Role atualizada com sucesso",
+      })
+
+      setRoleDialogOpen(false)
+      setSelectedUser(null)
+      loadUsers()
+    } catch (error: any) {
+      console.error('❌ Erro ao atualizar role:', error)
+      
+      toast({
+        title: "Erro ao atualizar role",
+        description: error.response?.data?.message || "Não foi possível atualizar a role",
+        variant: "destructive",
+      })
+    } finally {
+      setRoleSubmitting(false)
+    }
+  }
+
+  const handleToggleUserActive = async (userId: string) => {
+    try {
+      await usersApi.toggleActive(userId, companyId)
+
+      toast({
+        title: "Sucesso",
+        description: "Status do usuário atualizado",
+      })
+
+      loadUsers()
+    } catch (error: any) {
+      console.error('❌ Erro ao alterar status:', error)
+      
+      toast({
+        title: "Erro ao alterar status",
+        description: error.response?.data?.message || "Não foi possível alterar o status",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Usuários disponíveis para vincular (que não estão nesta empresa)
+  const availableUsers = allUsers.filter(
+    (user) => !usersData?.data.some((u) => u.id === user.id)
+  )
+
   return (
     <DashboardLayout userRole="admin">
       <div className="space-y-6">
@@ -135,9 +321,9 @@ export default function UsuariosEmpresaPage() {
               )}
             </div>
           </div>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Adicionar Usuário
+          <Button onClick={handleOpenLinkDialog}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Vincular Usuário
           </Button>
         </div>
 
@@ -269,16 +455,26 @@ export default function UsuariosEmpresaPage() {
                           {formatDate(user.createdAt)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                          >
-                            <Link href={`/admin/empresas/${companyId}/usuarios/${user.id}`}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar
-                            </Link>
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenRoleDialog(user)}
+                            >
+                              Alterar Role
+                            </Button>
+                            <Switch
+                              checked={isActive}
+                              onCheckedChange={() => handleToggleUserActive(user.id)}
+                            />
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleUnlinkUser(user.id, user.name)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -288,8 +484,146 @@ export default function UsuariosEmpresaPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Dialog de Vincular Usuário */}
+        <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Vincular Usuário à Empresa</DialogTitle>
+              <DialogDescription>
+                Selecione um usuário existente para vincular a esta empresa
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {availableUsers.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground">
+                  <Users className="mx-auto h-12 w-12 mb-2 opacity-20" />
+                  <p>Todos os usuários já estão vinculados a esta empresa</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="user">
+                      Usuário <span className="text-red-500">*</span>
+                    </Label>
+                    <Select
+                      value={selectedUserId}
+                      onValueChange={setSelectedUserId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um usuário" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableUsers.map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.name} ({user.email})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="role">
+                      Role <span className="text-red-500">*</span>
+                    </Label>
+                    <Select
+                      value={selectedRoleId}
+                      onValueChange={setSelectedRoleId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione uma role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roles.map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="linkActive"
+                      checked={linkActive}
+                      onCheckedChange={setLinkActive}
+                    />
+                    <Label htmlFor="linkActive">Usuário ativo</Label>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setLinkDialogOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleLinkUser}
+                disabled={linkSubmitting || availableUsers.length === 0}
+              >
+                {linkSubmitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Vincular
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog de Alterar Role */}
+        <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Alterar Role do Usuário</DialogTitle>
+              <DialogDescription>
+                Altere a role de <strong>{selectedUser?.name}</strong> nesta empresa
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="newRole">
+                  Nova Role <span className="text-red-500">*</span>
+                </Label>
+                <Select value={newRoleId} onValueChange={setNewRoleId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        {role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setRoleDialogOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handleChangeRole} disabled={roleSubmitting}>
+                {roleSubmitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Salvar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )
 }
-

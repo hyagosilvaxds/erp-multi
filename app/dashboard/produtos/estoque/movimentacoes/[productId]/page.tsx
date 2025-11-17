@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Download, FileText, Filter, Package, Search, Calendar, MapPin, User } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Filter, Package, Search, Calendar, MapPin, User, ShoppingCart } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Button } from '@/components/ui/button'
 import {
@@ -375,7 +375,7 @@ export default function ProductMovementsPage() {
                         <TableHead className="text-right">Novo Estoque</TableHead>
                         <TableHead>Local</TableHead>
                         <TableHead>Motivo</TableHead>
-                        
+                        <TableHead>Venda</TableHead>
                         <TableHead>Documento</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -419,7 +419,29 @@ export default function ProductMovementsPage() {
                               )}
                             </div>
                           </TableCell>
-                          
+                          <TableCell>
+                            {movement.sale ? (
+                              <Badge
+                                variant="outline"
+                                className="cursor-pointer hover:bg-blue-50 border-blue-200 text-blue-700"
+                                onClick={() => router.push(`/dashboard/vendas/${movement.sale!.id}`)}
+                              >
+                                <ShoppingCart className="h-3 w-3 mr-1" />
+                                <div className="flex flex-col text-left">
+                                  <span className="text-xs font-semibold">
+                                    #{movement.sale.code}
+                                  </span>
+                                  {movement.sale.customer && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {movement.sale.customer.name}
+                                    </span>
+                                  )}
+                                </div>
+                              </Badge>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             {movement.document ? (
                               <Button
