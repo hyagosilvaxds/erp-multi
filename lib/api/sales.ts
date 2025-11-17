@@ -5,7 +5,7 @@ import { authApi } from "./auth"
 // Types & Interfaces
 // ============================================
 
-export type SaleStatus = "QUOTE" | "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "APPROVED" | "COMPLETED" | "CANCELED"
+export type SaleStatus = "QUOTE" | "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "APPROVED" | "INVOICED" | "COMPLETED" | "CANCELED"
 export type CreditAnalysisStatus = "PENDING" | "APPROVED" | "REJECTED"
 
 // Modalidade de Frete SEFAZ
@@ -912,6 +912,7 @@ export const saleStatusLabels: Record<SaleStatus, string> = {
   PENDING_APPROVAL: "Aguardando Aprovação",
   CONFIRMED: "Confirmado",
   APPROVED: "Aprovado",
+  INVOICED: "Faturado",
   COMPLETED: "Concluído",
   CANCELED: "Cancelado",
 }
@@ -923,6 +924,7 @@ export const saleStatusColors: Record<SaleStatus, string> = {
   PENDING_APPROVAL: "bg-yellow-100 text-yellow-800",
   CONFIRMED: "bg-cyan-100 text-cyan-800",
   APPROVED: "bg-green-100 text-green-800",
+  INVOICED: "bg-purple-100 text-purple-800",
   COMPLETED: "bg-emerald-100 text-emerald-800",
   CANCELED: "bg-red-100 text-red-800",
 }

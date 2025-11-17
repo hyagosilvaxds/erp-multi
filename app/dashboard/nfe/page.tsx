@@ -68,11 +68,18 @@ export default function NFePage() {
   const [statusFilter, setStatusFilter] = useState<NFeStatus | "ALL">("ALL")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchInput, setSearchInput] = useState("")
+  const [numeroFilter, setNumeroFilter] = useState("")
+  const [serieFilter, setSerieFilter] = useState("")
+  const [customerNameFilter, setCustomerNameFilter] = useState("")
+  const [chaveAcessoFilter, setChaveAcessoFilter] = useState("")
+  const [dataInicioFilter, setDataInicioFilter] = useState("")
+  const [dataFimFilter, setDataFimFilter] = useState("")
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
 
   useEffect(() => {
     loadNFes()
     loadStats()
-  }, [page, statusFilter, searchQuery])
+  }, [page, statusFilter, searchQuery, numeroFilter, serieFilter, customerNameFilter, chaveAcessoFilter, dataInicioFilter, dataFimFilter])
 
   const loadNFes = async () => {
     try {
@@ -82,6 +89,12 @@ export default function NFePage() {
         limit: 20,
         status: statusFilter === "ALL" ? undefined : statusFilter,
         search: searchQuery || undefined,
+        numero: numeroFilter || undefined,
+        serie: serieFilter || undefined,
+        customerName: customerNameFilter || undefined,
+        chaveAcesso: chaveAcessoFilter || undefined,
+        dataInicio: dataInicioFilter || undefined,
+        dataFim: dataFimFilter || undefined,
       })
 
       setNfes(response.data)
@@ -109,6 +122,19 @@ export default function NFePage() {
 
   const handleSearch = () => {
     setSearchQuery(searchInput)
+    setPage(1)
+  }
+
+  const handleClearFilters = () => {
+    setSearchInput("")
+    setSearchQuery("")
+    setNumeroFilter("")
+    setSerieFilter("")
+    setCustomerNameFilter("")
+    setChaveAcessoFilter("")
+    setDataInicioFilter("")
+    setDataFimFilter("")
+    setStatusFilter("ALL")
     setPage(1)
   }
 
@@ -202,23 +228,13 @@ export default function NFePage() {
             <p className="text-muted-foreground">Gerencie as NF-es da sua empresa</p>
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => router.push("/dashboard/nfe/from-sale")}
-            >
-              <ShoppingCart className="mr-2 h-4 w-4" />
-              Gerar da Venda
-            </Button>
-            <Button onClick={() => router.push("/dashboard/nfe/new")}>
-              <Plus className="mr-2 h-4 w-4" />
-              Nova NF-e
-            </Button>
+            
           </div>
         </div>
 
         {/* Estatísticas */}
         {stats && (
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total</CardTitle>
@@ -243,28 +259,6 @@ export default function NFePage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Canceladas</CardTitle>
-                <XCircle className="h-4 w-4 text-gray-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.canceladas}</div>
-                <p className="text-xs text-muted-foreground">Cancelamentos</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Rascunhos</CardTitle>
-                <AlertCircle className="h-4 w-4 text-yellow-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.rascunhos}</div>
-                <p className="text-xs text-muted-foreground">Em edição</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
                 <TrendingUp className="h-4 w-4 text-blue-600" />
               </CardHeader>
@@ -279,49 +273,170 @@ export default function NFePage() {
         {/* Filtros */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              Filtros
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por número, chave, cliente..."
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <Select
-                value={statusFilter}
-                onValueChange={(value) => {
-                  setStatusFilter(value as NFeStatus | "ALL")
-                  setPage(1)
-                }}
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Filter className="h-5 w-5" />
+                Filtros
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
               >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos os Status</SelectItem>
-                  <SelectItem value="DRAFT">Rascunho</SelectItem>
-                  <SelectItem value="AUTHORIZED">Autorizada</SelectItem>
-                  <SelectItem value="CANCELED">Cancelada</SelectItem>
-                  <SelectItem value="REJECTED">Rejeitada</SelectItem>
-                  <SelectItem value="PROCESSANDO">Processando</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button onClick={handleSearch}>
-                <Search className="mr-2 h-4 w-4" />
-                Buscar
+                {showAdvancedFilters ? "Filtros Simples" : "Filtros Avançados"}
               </Button>
             </div>
+          </CardHeader>
+          <CardContent>
+            {!showAdvancedFilters ? (
+              // Filtros Simples
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por número, chave, cliente..."
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value) => {
+                    setStatusFilter(value as NFeStatus | "ALL")
+                    setPage(1)
+                  }}
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos os Status</SelectItem>
+                    <SelectItem value="DRAFT">Rascunho</SelectItem>
+                    <SelectItem value="AUTHORIZED">Autorizada</SelectItem>
+                    <SelectItem value="CANCELED">Cancelada</SelectItem>
+                    <SelectItem value="REJECTED">Rejeitada</SelectItem>
+                    <SelectItem value="PROCESSANDO">Processando</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={handleSearch}>
+                  <Search className="mr-2 h-4 w-4" />
+                  Buscar
+                </Button>
+              </div>
+            ) : (
+              // Filtros Avançados
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Número */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Número</label>
+                    <Input
+                      placeholder="Ex: 123"
+                      value={numeroFilter}
+                      onChange={(e) => setNumeroFilter(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                    />
+                  </div>
+
+                  {/* Série */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Série</label>
+                    <Input
+                      placeholder="Ex: 1"
+                      value={serieFilter}
+                      onChange={(e) => setSerieFilter(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                    />
+                  </div>
+
+                  {/* Status */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Status</label>
+                    <Select
+                      value={statusFilter}
+                      onValueChange={(value) => {
+                        setStatusFilter(value as NFeStatus | "ALL")
+                        setPage(1)
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">Todos</SelectItem>
+                        <SelectItem value="DRAFT">Rascunho</SelectItem>
+                        <SelectItem value="AUTHORIZED">Autorizada</SelectItem>
+                        <SelectItem value="CANCELED">Cancelada</SelectItem>
+                        <SelectItem value="REJECTED">Rejeitada</SelectItem>
+                        <SelectItem value="PROCESSANDO">Processando</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Cliente */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Nome do Cliente</label>
+                    <Input
+                      placeholder="Ex: João Silva"
+                      value={customerNameFilter}
+                      onChange={(e) => setCustomerNameFilter(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                    />
+                  </div>
+
+                  {/* Chave de Acesso */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Chave de Acesso</label>
+                    <Input
+                      placeholder="Ex: 35240 (parcial)"
+                      value={chaveAcessoFilter}
+                      onChange={(e) => setChaveAcessoFilter(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                    />
+                  </div>
+
+                  {/* Data Início */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Data Início</label>
+                    <Input
+                      type="date"
+                      value={dataInicioFilter}
+                      onChange={(e) => setDataInicioFilter(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Data Fim */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Data Fim</label>
+                    <Input
+                      type="date"
+                      value={dataFimFilter}
+                      onChange={(e) => setDataFimFilter(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Botões de ação */}
+                <div className="flex gap-2">
+                  <Button onClick={() => setPage(1)} className="flex-1 sm:flex-none">
+                    <Search className="mr-2 h-4 w-4" />
+                    Aplicar Filtros
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleClearFilters}
+                    className="flex-1 sm:flex-none"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Limpar Filtros
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -348,14 +463,7 @@ export default function NFePage() {
                   Comece criando uma nova NF-e ou gerando da venda.
                 </p>
                 <div className="mt-6 flex gap-2 justify-center">
-                  <Button variant="outline" onClick={() => router.push("/dashboard/nfe/from-sale")}>
-                    <ShoppingCart className="mr-2 h-4 w-4" />
-                    Gerar da Venda
-                  </Button>
-                  <Button onClick={() => router.push("/dashboard/nfe/new")}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Nova NF-e
-                  </Button>
+                  
                 </div>
               </div>
             ) : (

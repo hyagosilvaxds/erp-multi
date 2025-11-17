@@ -80,15 +80,8 @@ export default function NovaVendaPage() {
   const [paymentMethodId, setPaymentMethodId] = useState("")
   const [installments, setInstallments] = useState(1)
   
-  // Descontos
-  const [discountPercent, setDiscountPercent] = useState(0)
-  const [discountAmount, setDiscountAmount] = useState(0)
-  
   // Valores adicionais
-  const [shippingCost, setShippingCost] = useState(0)
   const [shippingModality, setShippingModality] = useState<ShippingModality>(9)
-  const [otherCharges, setOtherCharges] = useState(0)
-  const [otherChargesDesc, setOtherChargesDesc] = useState("")
   
   // Observações
   const [notes, setNotes] = useState("")
@@ -321,18 +314,9 @@ export default function NovaVendaPage() {
     return items.reduce((sum, item) => sum + item.total, 0)
   }
 
-  const calculateDiscount = () => {
-    const subtotal = calculateSubtotal()
-    if (discountPercent > 0) {
-      return (subtotal * discountPercent) / 100
-    }
-    return discountAmount
-  }
-
   const calculateTotal = () => {
     const subtotal = calculateSubtotal()
-    const discount = calculateDiscount()
-    return subtotal - discount + shippingCost + otherCharges
+    return subtotal
   }
 
   const handleSubmit = async (asQuote: boolean) => {
@@ -384,12 +368,7 @@ export default function NovaVendaPage() {
         })),
         ...(paymentMethodId && { paymentMethodId }),
         installments: installments > 1 ? installments : undefined,
-        discountPercent: discountPercent > 0 ? discountPercent : undefined,
-        discountAmount: discountAmount > 0 ? discountAmount : undefined,
-        shippingCost: shippingCost > 0 ? shippingCost : undefined,
         shippingModality,
-        otherCharges: otherCharges > 0 ? otherCharges : undefined,
-        otherChargesDesc: otherChargesDesc.trim() || undefined,
         notes: notes.trim() || undefined,
         internalNotes: internalNotes.trim() || undefined,
         validUntil: validUntil.trim() ? new Date(validUntil + 'T23:59:59.999Z').toISOString() : undefined,
@@ -806,61 +785,6 @@ export default function NovaVendaPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="discountPercent">Desconto (%)</Label>
-                    <Input
-                      id="discountPercent"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      value={discountPercent}
-                      onChange={(e) => {
-                        setDiscountPercent(Number(e.target.value))
-                        if (Number(e.target.value) > 0) setDiscountAmount(0)
-                      }}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="discountAmount">Desconto (R$)</Label>
-                    <Input
-                      id="discountAmount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={discountAmount}
-                      onChange={(e) => {
-                        setDiscountAmount(Number(e.target.value))
-                        if (Number(e.target.value) > 0) setDiscountPercent(0)
-                      }}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Use desconto em % OU em valor fixo
-                    </p>
-                  </div>
-
-                  {calculateDiscount() > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Desconto</span>
-                      <span className="font-medium text-destructive">
-                        -{formatCurrency(calculateDiscount())}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="shippingCost">Frete</Label>
-                    <Input
-                      id="shippingCost"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={shippingCost}
-                      onChange={(e) => setShippingCost(Number(e.target.value))}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
                     <Label htmlFor="shippingModality">Modalidade de Frete</Label>
                     <Select
                       value={String(shippingModality)}
@@ -879,33 +803,9 @@ export default function NovaVendaPage() {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Código SEFAZ de modalidade de frete para NF-e
+                      Informação obrigatória para emissão de NF-e
                     </p>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="otherCharges">Outras Despesas</Label>
-                    <Input
-                      id="otherCharges"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={otherCharges}
-                      onChange={(e) => setOtherCharges(Number(e.target.value))}
-                    />
-                  </div>
-
-                  {otherCharges > 0 && (
-                    <div className="space-y-2">
-                      <Label htmlFor="otherChargesDesc">Descrição das Despesas</Label>
-                      <Input
-                        id="otherChargesDesc"
-                        placeholder="Ex: Embalagem especial"
-                        value={otherChargesDesc}
-                        onChange={(e) => setOtherChargesDesc(e.target.value)}
-                      />
-                    </div>
-                  )}
 
                   <div className="border-t pt-3">
                     <div className="flex justify-between">

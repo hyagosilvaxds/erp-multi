@@ -27,8 +27,6 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
 import { 
   ArrowLeft, 
   Edit, 
@@ -45,7 +43,7 @@ import {
   Receipt,
 } from "lucide-react"
 import { salesApi, Sale, saleStatusLabels, saleStatusColors, shippingModalityLabels } from "@/lib/api/sales"
-import { nfeApi, EmitirNFeDto, NFe, getFileUrl } from "@/lib/api/nfe"
+import { nfeApi, NFe, getFileUrl } from "@/lib/api/nfe"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/masks"
 
@@ -73,22 +71,10 @@ export default function DetalhesVendaPage() {
   // Dialog de exclusão
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
-  // Dialog de emissão de NF-e
-  const [nfeDialogOpen, setNfeDialogOpen] = useState(false)
+  // Dialog de resultado da NF-e
+  const [nfeResultDialogOpen, setNfeResultDialogOpen] = useState(false)
   const [emitindoNFe, setEmitindoNFe] = useState(false)
   const [nfeEmitida, setNfeEmitida] = useState<NFe | null>(null)
-  const [nfeFormData, setNfeFormData] = useState<EmitirNFeDto>({
-    saleId: saleId,
-    enviarSefaz: true,
-    modelo: "55",
-    serie: "1",
-    naturezaOperacao: "VENDA",
-    tipoOperacao: "1",
-    finalidade: "1",
-    consumidorFinal: "1",
-    presencaComprador: "1",
-    modalidadeFrete: "9",
-  })
 
   useEffect(() => {
     loadSale()
@@ -271,14 +257,14 @@ export default function DetalhesVendaPage() {
       setEmitindoNFe(true)
       
       const nfe = await nfeApi.emitir({
-        ...nfeFormData,
         saleId: saleId,
+        enviarSefaz: true,
       })
       
       setNfeEmitida(nfe)
+      setNfeResultDialogOpen(true)
       
-      // Sempre exibir o resultado no dialog
-      // O toast depende do status
+      // Toast depende do status
       if (nfe.status === "AUTHORIZED" || nfe.status === "AUTORIZADA") {
         toast({
           title: "✓ NF-e Autorizada",
@@ -305,7 +291,6 @@ export default function DetalhesVendaPage() {
         description: error.response?.data?.message || "Tente novamente mais tarde.",
         variant: "destructive",
       })
-      setNfeDialogOpen(false)
     } finally {
       setEmitindoNFe(false)
     }
@@ -390,9 +375,11 @@ export default function DetalhesVendaPage() {
   }
 
   const canEdit = sale.status === "QUOTE" || sale.status === "DRAFT"
-  const canApprove = sale.status !== "APPROVED" && sale.status !== "COMPLETED" && sale.status !== "CANCELED"
-  const canCancel = sale.status !== "COMPLETED" && sale.status !== "CANCELED"
+  const canApprove = sale.status !== "APPROVED" && sale.status !== "INVOICED" && sale.status !== "COMPLETED" && sale.status !== "CANCELED"
+  const canCancel = sale.status !== "INVOICED" && sale.status !== "COMPLETED" && sale.status !== "CANCELED"
   const canDelete = sale.status === "QUOTE" || sale.status === "DRAFT"
+  const isInvoiced = sale.status === "INVOICED"
+  const hasNFes = sale.nfes && sale.nfes.length > 0
 
   return (
     <DashboardLayout userRole="company">
@@ -452,12 +439,44 @@ export default function DetalhesVendaPage() {
             {(sale.status === "CONFIRMED" || sale.status === "APPROVED" || sale.status === "COMPLETED") && (
               <Button 
                 variant="outline"
-                onClick={() => setNfeDialogOpen(true)} 
+                onClick={handleEmitirNFe} 
                 disabled={emitindoNFe}
               >
-                <Receipt className="mr-2 h-4 w-4" />
-                Emitir NF-e
+                {emitindoNFe ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Emitindo...
+                  </>
+                ) : (
+                  <>
+                    <Receipt className="mr-2 h-4 w-4" />
+                    Emitir NF-e
+                  </>
+                )}
               </Button>
+            )}
+            {isInvoiced && hasNFes && (
+              <>
+                {(sale.nfes?.[0] as any)?.danfePdfUrl && (
+                  <Button
+                    variant="default"
+                    onClick={() => window.open(getFileUrl((sale.nfes?.[0] as any).danfePdfUrl) || undefined, '_blank')}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Baixar DANFE
+                  </Button>
+                )}
+                {(sale.nfes?.[0] as any)?.xmlAutorizadoUrl && (
+                  <Button
+                    variant="outline"
+                    onClick={() => window.open(getFileUrl((sale.nfes?.[0] as any).xmlAutorizadoUrl) || undefined, '_blank')}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Baixar XML
+                  </Button>
+                )}
+              </>
             )}
             {canCancel && (
               <Button
@@ -880,20 +899,78 @@ export default function DetalhesVendaPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {sale.nfes.map((nfe: any) => (
-                      <div key={nfe.id} className="flex items-center justify-between p-2 border rounded-lg">
-                        <div>
-                          <p className="text-sm font-medium">NF-e {nfe.numero}</p>
-                          <p className="text-xs text-muted-foreground">Série: {nfe.serie}</p>
+                      <div key={nfe.id} className="border rounded-lg p-3 space-y-3">
+                        {/* Header com número e status */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold">NF-e {nfe.numero}</p>
+                            <p className="text-xs text-muted-foreground">Série: {nfe.serie}</p>
+                          </div>
+                          <Badge variant={
+                            nfe.status === "AUTHORIZED" || nfe.status === "AUTORIZADA" ? "default" :
+                            nfe.status === "REJECTED" || nfe.status === "REJEITADA" ? "destructive" :
+                            "secondary"
+                          }>
+                            {nfe.status === "AUTHORIZED" || nfe.status === "AUTORIZADA" ? "Autorizada" : nfe.status}
+                          </Badge>
                         </div>
-                        <Badge variant={
-                          nfe.status === "AUTHORIZED" ? "default" :
-                          nfe.status === "REJECTED" || nfe.status === "REJEITADA" ? "destructive" :
-                          "secondary"
-                        }>
-                          {nfe.status}
-                        </Badge>
+
+                        {/* Informações da NF-e */}
+                        {(nfe.status === "AUTHORIZED" || nfe.status === "AUTORIZADA") && (
+                          <div className="space-y-1 text-xs">
+                            {nfe.chaveAcesso && (
+                              <div>
+                                <span className="text-muted-foreground">Chave: </span>
+                                <span className="font-mono">{nfe.chaveAcesso}</span>
+                              </div>
+                            )}
+                            {nfe.protocoloAutorizacao && (
+                              <div>
+                                <span className="text-muted-foreground">Protocolo: </span>
+                                <span className="font-mono">{nfe.protocoloAutorizacao}</span>
+                              </div>
+                            )}
+                            {nfe.dataAutorizacao && (
+                              <div>
+                                <span className="text-muted-foreground">Autorizada em: </span>
+                                <span>{formatDateTime(nfe.dataAutorizacao)}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Botões de Download */}
+                        {(nfe.status === "AUTHORIZED" || nfe.status === "AUTORIZADA") && (
+                          <div className="space-y-2">
+                            {/* DANFE em destaque */}
+                            {nfe.danfePdfUrl && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => window.open(getFileUrl(nfe.danfePdfUrl) || undefined, '_blank')}
+                                className="w-full bg-green-600 hover:bg-green-700"
+                              >
+                                <Download className="mr-2 h-3 w-3" />
+                                Baixar DANFE (PDF)
+                              </Button>
+                            )}
+                            
+                            {/* XML em outline */}
+                            {nfe.xmlAutorizadoUrl && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(getFileUrl(nfe.xmlAutorizadoUrl) || undefined, '_blank')}
+                                className="w-full"
+                              >
+                                <Download className="mr-2 h-3 w-3" />
+                                Baixar XML Autorizado
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1144,346 +1221,178 @@ export default function DetalhesVendaPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog de Emissão de NF-e */}
-      <Dialog open={nfeDialogOpen} onOpenChange={setNfeDialogOpen}>
+      {/* Dialog de Resultado da NF-e */}
+      <Dialog open={nfeResultDialogOpen} onOpenChange={setNfeResultDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
-              Emitir Nota Fiscal Eletrônica (NF-e)
+              Resultado da Emissão NF-e
             </DialogTitle>
             <DialogDescription>
-              Venda {sale?.code} • Cliente: {sale?.customer?.name} • Total: {sale && formatCurrency(sale.totalAmount)}
+              Venda {sale?.code}
             </DialogDescription>
           </DialogHeader>
 
-          {!nfeEmitida ? (
-            <>
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="modelo">Modelo *</Label>
-                    <Select
-                      value={nfeFormData.modelo}
-                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, modelo: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="55">55 - NF-e</SelectItem>
-                        <SelectItem value="65">65 - NFC-e</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="serie">Série *</Label>
-                    <Input
-                      id="serie"
-                      value={nfeFormData.serie}
-                      onChange={(e) => setNfeFormData({ ...nfeFormData, serie: e.target.value })}
-                      placeholder="1"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="naturezaOperacao">Natureza da Operação *</Label>
-                  <Input
-                    id="naturezaOperacao"
-                    value={nfeFormData.naturezaOperacao}
-                    onChange={(e) => setNfeFormData({ ...nfeFormData, naturezaOperacao: e.target.value })}
-                    placeholder="VENDA"
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="tipoOperacao">Tipo de Operação *</Label>
-                    <Select
-                      value={nfeFormData.tipoOperacao}
-                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, tipoOperacao: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">0 - Entrada</SelectItem>
-                        <SelectItem value="1">1 - Saída</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="finalidade">Finalidade *</Label>
-                    <Select
-                      value={nfeFormData.finalidade}
-                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, finalidade: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 - Normal</SelectItem>
-                        <SelectItem value="2">2 - Complementar</SelectItem>
-                        <SelectItem value="3">3 - Ajuste</SelectItem>
-                        <SelectItem value="4">4 - Devolução</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="consumidorFinal">Consumidor Final *</Label>
-                    <Select
-                      value={nfeFormData.consumidorFinal}
-                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, consumidorFinal: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">0 - Não</SelectItem>
-                        <SelectItem value="1">1 - Sim</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="presencaComprador">Presença do Comprador *</Label>
-                    <Select
-                      value={nfeFormData.presencaComprador}
-                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, presencaComprador: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">0 - Não se aplica</SelectItem>
-                        <SelectItem value="1">1 - Presencial</SelectItem>
-                        <SelectItem value="2">2 - Internet</SelectItem>
-                        <SelectItem value="3">3 - Teleatendimento</SelectItem>
-                        <SelectItem value="4">4 - NFC-e Entrega</SelectItem>
-                        <SelectItem value="9">9 - Outros</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="modalidadeFrete">Modalidade do Frete *</Label>
-                    <Select
-                      value={nfeFormData.modalidadeFrete}
-                      onValueChange={(value) => setNfeFormData({ ...nfeFormData, modalidadeFrete: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">0 - Emitente (CIF)</SelectItem>
-                        <SelectItem value="1">1 - Destinatário (FOB)</SelectItem>
-                        <SelectItem value="2">2 - Terceiros</SelectItem>
-                        <SelectItem value="3">3 - Próprio Emitente</SelectItem>
-                        <SelectItem value="4">4 - Próprio Destinatário</SelectItem>
-                        <SelectItem value="9">9 - Sem Frete</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                  <p className="text-sm text-blue-800">
-                    <strong>Atenção:</strong> Ao confirmar, a NF-e será enviada para a SEFAZ e, se autorizada, 
-                    não poderá mais ser editada. Certifique-se de que todos os dados estão corretos.
-                  </p>
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setNfeDialogOpen(false)}
-                  disabled={emitindoNFe}
-                >
-                  Cancelar
-                </Button>
-                <Button onClick={handleEmitirNFe} disabled={emitindoNFe}>
-                  {emitindoNFe ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Emitindo NF-e...
-                    </>
-                  ) : (
-                    <>
-                      <Receipt className="mr-2 h-4 w-4" />
-                      Emitir NF-e
-                    </>
-                  )}
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <div className="space-y-4 py-4">
-                {/* Card de Status - Sucesso ou Erro */}
-                {(nfeEmitida.status === "AUTHORIZED" || nfeEmitida.status === "AUTORIZADA") ? (
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-                    <h3 className="text-sm font-semibold text-green-800 mb-3">✓ NF-e Autorizada com Sucesso!</h3>
-                    <div className="space-y-2 text-sm text-green-700">
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                        <div>
-                          <p className="text-xs text-green-600 font-medium">Número:</p>
-                          <p className="font-semibold">{nfeEmitida.numero}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-green-600 font-medium">Série:</p>
-                          <p className="font-semibold">{nfeEmitida.serie}</p>
-                        </div>
-                      </div>
-                      
-                      {(nfeEmitida.protocolo || nfeEmitida.protocoloAutorizacao) && (
-                        <div className="pt-2 border-t border-green-200">
-                          <p className="text-xs text-green-600 font-medium">Protocolo de Autorização:</p>
-                          <p className="font-mono font-semibold">{nfeEmitida.protocolo || nfeEmitida.protocoloAutorizacao}</p>
-                        </div>
-                      )}
-                      
-                      {nfeEmitida.chaveAcesso && (
-                        <div className="pt-2 border-t border-green-200">
-                          <p className="text-xs text-green-600 font-medium">Chave de Acesso:</p>
-                          <p className="font-mono text-xs font-semibold break-all">{nfeEmitida.chaveAcesso}</p>
-                        </div>
-                      )}
-                      
-                      {nfeEmitida.dataAutorizacao && (
-                        <div className="pt-2 border-t border-green-200">
-                          <p className="text-xs text-green-600 font-medium">Data de Autorização:</p>
-                          <p className="font-semibold">{formatDateTime(String(nfeEmitida.dataAutorizacao))}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (nfeEmitida.status === "REJECTED" || nfeEmitida.status === "REJEITADA") ? (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-                    <h3 className="text-sm font-semibold text-red-800 mb-2">✗ NF-e Rejeitada pela SEFAZ</h3>
-                    <div className="space-y-2 text-sm text-red-700">
+          {nfeEmitida && (
+            <div className="space-y-4 py-4">
+              {/* Card de Status - Sucesso ou Erro */}
+              {(nfeEmitida.status === "AUTHORIZED" || nfeEmitida.status === "AUTORIZADA") ? (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                  <h3 className="text-sm font-semibold text-green-800 mb-3">✓ NF-e Autorizada com Sucesso!</h3>
+                  <div className="space-y-2 text-sm text-green-700">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                       <div>
-                        <p><strong>Código:</strong> {nfeEmitida.codigoStatus || "—"}</p>
-                        <p><strong>Motivo:</strong> {nfeEmitida.motivoRejeicao || nfeEmitida.mensagemSefaz || "Motivo não informado"}</p>
+                        <p className="text-xs text-green-600 font-medium">Número:</p>
+                        <p className="font-semibold">{nfeEmitida.numero}</p>
                       </div>
-                      <div className="pt-2 border-t border-red-200">
-                        <p className="text-xs">A NF-e foi gerada mas não foi aceita pela SEFAZ. Corrija os dados e tente novamente.</p>
+                      <div>
+                        <p className="text-xs text-green-600 font-medium">Série:</p>
+                        <p className="font-semibold">{nfeEmitida.serie}</p>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-                    <h3 className="text-sm font-semibold text-yellow-800 mb-2">⏳ NF-e em Processamento</h3>
-                    <div className="space-y-1 text-sm text-yellow-700">
-                      <p><strong>Número:</strong> {nfeEmitida.numero}</p>
-                      <p><strong>Série:</strong> {nfeEmitida.serie}</p>
-                      <p className="text-xs pt-2">Aguardando resposta da SEFAZ...</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Downloads de Arquivos */}
-                {(nfeEmitida.status === "AUTHORIZED" || nfeEmitida.status === "AUTORIZADA") && (
-                  <div className="space-y-3">
-                    <Label className="text-sm font-medium">Downloads Disponíveis</Label>
                     
-                    {/* DANFE em destaque */}
-                    {nfeEmitida.danfeUrl && (
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => window.open(getFileUrl(nfeEmitida.danfeUrl!) || undefined, '_blank')}
-                        className="w-full bg-green-600 hover:bg-green-700"
-                      >
-                        <Download className="mr-2 h-4 w-4" />
-                        Baixar DANFE (PDF)
-                      </Button>
+                    {(nfeEmitida.protocolo || nfeEmitida.protocoloAutorizacao) && (
+                      <div className="pt-2 border-t border-green-200">
+                        <p className="text-xs text-green-600 font-medium">Protocolo de Autorização:</p>
+                        <p className="font-mono font-semibold">{nfeEmitida.protocolo || nfeEmitida.protocoloAutorizacao}</p>
+                      </div>
                     )}
                     
-                    {/* XMLs em grid */}
-                    <div className="grid grid-cols-2 gap-2">
-                      {nfeEmitida.xmlGeradoUrl && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlGeradoUrl) || undefined, '_blank')}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          XML Gerado
-                        </Button>
-                      )}
-                      {nfeEmitida.xmlAssinadoUrl && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlAssinadoUrl) || undefined, '_blank')}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          XML Assinado
-                        </Button>
-                      )}
+                    {nfeEmitida.chaveAcesso && (
+                      <div className="pt-2 border-t border-green-200">
+                        <p className="text-xs text-green-600 font-medium">Chave de Acesso:</p>
+                        <p className="font-mono text-xs font-semibold break-all">{nfeEmitida.chaveAcesso}</p>
+                      </div>
+                    )}
+                    
+                    {nfeEmitida.dataAutorizacao && (
+                      <div className="pt-2 border-t border-green-200">
+                        <p className="text-xs text-green-600 font-medium">Data de Autorização:</p>
+                        <p className="font-semibold">{formatDateTime(String(nfeEmitida.dataAutorizacao))}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (nfeEmitida.status === "REJECTED" || nfeEmitida.status === "REJEITADA") ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                  <h3 className="text-sm font-semibold text-red-800 mb-2">✗ NF-e Rejeitada pela SEFAZ</h3>
+                  <div className="space-y-2 text-sm text-red-700">
+                    <div>
+                      <p><strong>Código:</strong> {nfeEmitida.codigoStatus || "—"}</p>
+                      <p><strong>Motivo:</strong> {nfeEmitida.motivoRejeicao || nfeEmitida.mensagemSefaz || "Motivo não informado"}</p>
+                    </div>
+                    <div className="pt-2 border-t border-red-200">
+                      <p className="text-xs">A NF-e foi gerada mas não foi aceita pela SEFAZ. Corrija os dados e tente novamente.</p>
                     </div>
                   </div>
-                )}
-
-                {/* Downloads de Arquivos XML (para casos de erro) */}
-                {(nfeEmitida.status === "REJECTED" || nfeEmitida.status === "REJEITADA") && (
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Arquivos XML</Label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {nfeEmitida.xmlGeradoUrl && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlGeradoUrl) || undefined, '_blank')}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          XML Gerado
-                        </Button>
-                      )}
-                      {nfeEmitida.xmlAssinadoUrl && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlAssinadoUrl) || undefined, '_blank')}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          XML Assinado
-                        </Button>
-                      )}
-                      {nfeEmitida.xmlErroUrl && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(getFileUrl(nfeEmitida.xmlErroUrl) || undefined, '_blank')}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          Detalhes do Erro (JSON)
-                        </Button>
-                      )}
-                    </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+                  <h3 className="text-sm font-semibold text-yellow-800 mb-2">⏳ NF-e em Processamento</h3>
+                  <div className="space-y-1 text-sm text-yellow-700">
+                    <p><strong>Número:</strong> {nfeEmitida.numero}</p>
+                    <p><strong>Série:</strong> {nfeEmitida.serie}</p>
+                    <p className="text-xs pt-2">Aguardando resposta da SEFAZ...</p>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              <DialogFooter>
-                <Button
-                  onClick={() => {
-                    setNfeDialogOpen(false)
-                    setNfeEmitida(null)
-                  }}
-                >
-                  Fechar
-                </Button>
-              </DialogFooter>
-            </>
+              {/* Downloads de Arquivos */}
+              {(nfeEmitida.status === "AUTHORIZED" || nfeEmitida.status === "AUTORIZADA") && (
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Downloads Disponíveis</Label>
+                  
+                  {/* DANFE em destaque */}
+                  {nfeEmitida.danfeUrl && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => window.open(getFileUrl(nfeEmitida.danfeUrl!) || undefined, '_blank')}
+                      className="w-full bg-green-600 hover:bg-green-700"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Baixar DANFE (PDF)
+                    </Button>
+                  )}
+                  
+                  {/* XMLs em grid */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {nfeEmitida.xmlGeradoUrl && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(getFileUrl(nfeEmitida.xmlGeradoUrl) || undefined, '_blank')}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        XML Gerado
+                      </Button>
+                    )}
+                    {nfeEmitida.xmlAssinadoUrl && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(getFileUrl(nfeEmitida.xmlAssinadoUrl) || undefined, '_blank')}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        XML Assinado
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Downloads de Arquivos XML (para casos de erro) */}
+              {(nfeEmitida.status === "REJECTED" || nfeEmitida.status === "REJEITADA") && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Arquivos XML</Label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {nfeEmitida.xmlGeradoUrl && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(getFileUrl(nfeEmitida.xmlGeradoUrl) || undefined, '_blank')}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        XML Gerado
+                      </Button>
+                    )}
+                    {nfeEmitida.xmlAssinadoUrl && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(getFileUrl(nfeEmitida.xmlAssinadoUrl) || undefined, '_blank')}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        XML Assinado
+                      </Button>
+                    )}
+                    {nfeEmitida.xmlErroUrl && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(getFileUrl(nfeEmitida.xmlErroUrl) || undefined, '_blank')}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Detalhes do Erro (JSON)
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
+
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setNfeResultDialogOpen(false)
+                setNfeEmitida(null)
+              }}
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardLayout>

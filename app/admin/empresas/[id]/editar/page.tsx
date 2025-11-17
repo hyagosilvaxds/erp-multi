@@ -138,6 +138,8 @@ export default function EditarEmpresaPage() {
     ultimoNumeroNFe: 0,
     proximoNumeroNFe: 0,
     ambienteFiscal: "",
+    aliquotaIBS: 0,
+    aliquotaCBS: 0,
   })
 
   useEffect(() => {
@@ -294,6 +296,8 @@ export default function EditarEmpresaPage() {
         ultimoNumeroNFe: data.ultimoNumeroNFe || 0,
         proximoNumeroNFe: data.proximoNumeroNFe || 0,
         ambienteFiscal: data.ambienteFiscal || "",
+        aliquotaIBS: data.aliquotaIBS || 0,
+        aliquotaCBS: data.aliquotaCBS || 0,
       })
       
       // Definir preview da logo se existir
@@ -1344,6 +1348,43 @@ export default function EditarEmpresaPage() {
                       onChange={(e) => handleInputChange('cfopPadrao', e.target.value)}
                       placeholder="0000"
                     />
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="aliquotaIBS">Alíquota IBS (%)</Label>
+                    <Input
+                      id="aliquotaIBS"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={formData.aliquotaIBS}
+                      onChange={(e) => handleInputChange('aliquotaIBS', parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Alíquota do Imposto sobre Bens e Serviços
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="aliquotaCBS">Alíquota CBS (%)</Label>
+                    <Input
+                      id="aliquotaCBS"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={formData.aliquotaCBS}
+                      onChange={(e) => handleInputChange('aliquotaCBS', parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Alíquota da Contribuição sobre Bens e Serviços
+                    </p>
                   </div>
                 </div>
 

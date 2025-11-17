@@ -79,11 +79,6 @@ export default function EditarVendaPage() {
   const [customerId, setCustomerId] = useState("")
   const [paymentMethodId, setPaymentMethodId] = useState("")
   const [installments, setInstallments] = useState(1)
-  const [discountPercent, setDiscountPercent] = useState("")
-  const [discountAmount, setDiscountAmount] = useState("")
-  const [shippingCost, setShippingCost] = useState("")
-  const [otherCharges, setOtherCharges] = useState("")
-  const [otherChargesDesc, setOtherChargesDesc] = useState("")
   const [notes, setNotes] = useState("")
   const [internalNotes, setInternalNotes] = useState("")
   const [validUntil, setValidUntil] = useState("")
@@ -156,11 +151,6 @@ export default function EditarVendaPage() {
       setCustomerId(saleData.customerId)
       setPaymentMethodId(saleData.paymentMethodId || "")
       setInstallments(saleData.installments || 1)
-      setDiscountPercent(saleData.discountPercent ? String(saleData.discountPercent) : "")
-      setDiscountAmount(saleData.discountAmount ? String(saleData.discountAmount) : "")
-      setShippingCost(saleData.shippingCost ? String(saleData.shippingCost) : "")
-      setOtherCharges(saleData.otherCharges ? String(saleData.otherCharges) : "")
-      setOtherChargesDesc(saleData.otherChargesDesc || "")
       setNotes(saleData.notes || "")
       setInternalNotes(saleData.internalNotes || "")
       
@@ -416,13 +406,8 @@ export default function EditarVendaPage() {
 
   const calculateTotal = () => {
     const subtotal = calculateSubtotal()
-    const discount = discountPercent 
-      ? (subtotal * parseFloat(discountPercent)) / 100
-      : parseFloat(discountAmount) || 0
-    const shipping = parseFloat(shippingCost) || 0
-    const other = parseFloat(otherCharges) || 0
     
-    return subtotal - discount + shipping + other
+    return subtotal
   }
 
   const handleSubmit = async () => {
@@ -457,16 +442,6 @@ export default function EditarVendaPage() {
       }
     }
 
-    // Validar descontos exclusivos
-    if (discountPercent && discountAmount) {
-      toast({
-        title: "Desconto duplicado",
-        description: "Escolha apenas um tipo de desconto: percentual OU valor fixo.",
-        variant: "destructive",
-      })
-      return
-    }
-
     try {
       setSaving(true)
 
@@ -486,21 +461,6 @@ export default function EditarVendaPage() {
       if (paymentMethodId) {
         updateDto.paymentMethodId = paymentMethodId
         updateDto.installments = installments
-      }
-
-      if (discountPercent) {
-        updateDto.discountPercent = parseFloat(discountPercent)
-      } else if (discountAmount) {
-        updateDto.discountAmount = parseFloat(discountAmount)
-      }
-
-      if (shippingCost) {
-        updateDto.shippingCost = parseFloat(shippingCost)
-      }
-
-      if (otherCharges) {
-        updateDto.otherCharges = parseFloat(otherCharges)
-        updateDto.otherChargesDesc = otherChargesDesc.trim() || undefined
       }
 
       updateDto.notes = notes.trim() || undefined
@@ -912,59 +872,6 @@ export default function EditarVendaPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal</span>
                     <span className="font-medium">{formatCurrency(calculateSubtotal())}</span>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-2">
-                    <Label>Desconto</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        placeholder="%" 
-                        value={discountPercent}
-                        onChange={(e) => {
-                          setDiscountPercent(e.target.value)
-                          if (e.target.value) setDiscountAmount("")
-                        }}
-                        disabled={!!discountAmount}
-                      />
-                      <Input
-                        placeholder="R$"
-                        value={discountAmount}
-                        onChange={(e) => {
-                          setDiscountAmount(e.target.value)
-                          if (e.target.value) setDiscountPercent("")
-                        }}
-                        disabled={!!discountPercent}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="shippingCost">Frete</Label>
-                    <Input
-                      id="shippingCost"
-                      placeholder="R$ 0,00"
-                      value={shippingCost}
-                      onChange={(e) => setShippingCost(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="otherCharges">Outras Despesas</Label>
-                    <Input
-                      id="otherCharges"
-                      placeholder="R$ 0,00"
-                      value={otherCharges}
-                      onChange={(e) => setOtherCharges(e.target.value)}
-                    />
-                    {otherCharges && (
-                      <Input
-                        placeholder="Descrição"
-                        value={otherChargesDesc}
-                        onChange={(e) => setOtherChargesDesc(e.target.value)}
-                      />
-                    )}
                   </div>
 
                   <Separator />

@@ -44,7 +44,7 @@ import {
   FileCheck,
   Clock,
 } from "lucide-react"
-import { nfeApi, NFe, nfeStatusLabels, nfeStatusColors, formatChaveAcesso } from "@/lib/api/nfe"
+import { nfeApi, NFe, nfeStatusLabels, nfeStatusColors, formatChaveAcesso, getFileUrl } from "@/lib/api/nfe"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/masks"
 
@@ -189,28 +189,24 @@ export default function NFEDetalhesPage() {
     }
   }
 
-  const handleDownloadPDF = async () => {
-    if (!nfe) return
+  const handleDownloadPDF = () => {
+    const danfePdfUrl = (nfe as any)?.danfePdfUrl || nfe?.danfeUrl
+    if (!danfePdfUrl) return
 
     try {
-      const blob = await nfeApi.downloadPDF(nfe.id)
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `DANFE-${nfe.numero}-${nfe.serie}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      const fileUrl = getFileUrl(danfePdfUrl)
+      if (fileUrl) {
+        window.open(fileUrl, '_blank')
 
-      toast({
-        title: "DANFE baixada",
-        description: "O PDF da DANFE foi baixado com sucesso.",
-      })
+        toast({
+          title: "DANFE baixada",
+          description: "O PDF da DANFE está sendo baixado.",
+        })
+      }
     } catch (error: any) {
       toast({
         title: "Erro ao baixar DANFE",
-        description: error.response?.data?.message || "Tente novamente mais tarde.",
+        description: error.message || "Tente novamente mais tarde.",
         variant: "destructive",
       })
     }
@@ -298,16 +294,6 @@ export default function NFEDetalhesPage() {
                     Emitir NF-e
                   </>
                 )}
-              </Button>
-            )}
-            {canCancel && (
-              <Button
-                variant="destructive"
-                onClick={() => setCancelDialogOpen(true)}
-                disabled={actionLoading}
-              >
-                <XCircle className="mr-2 h-4 w-4" />
-                Cancelar NF-e
               </Button>
             )}
             {canDelete && (
@@ -407,16 +393,17 @@ export default function NFEDetalhesPage() {
                   <div>
                     <p className="text-sm text-muted-foreground">CPF/CNPJ</p>
                     <p className="font-medium">
-                      {nfe.destinatarioCnpjCpf ||
+                      {nfe.customer?.cnpj ||
                         nfe.customer?.cpf ||
-                        nfe.customer?.cnpj ||
+                        nfe.customer?.cpfCnpj ||
+                        nfe.destinatarioCnpjCpf ||
                         "—"}
                     </p>
                   </div>
-                  {nfe.destinatarioIe && (
+                  {(nfe.destinatarioIe || nfe.customer?.stateRegistration) && (
                     <div>
                       <p className="text-sm text-muted-foreground">Inscrição Estadual</p>
-                      <p className="font-medium">{nfe.destinatarioIe}</p>
+                      <p className="font-medium">{nfe.destinatarioIe || nfe.customer?.stateRegistration}</p>
                     </div>
                   )}
                 </div>

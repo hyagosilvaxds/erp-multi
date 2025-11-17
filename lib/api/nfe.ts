@@ -152,8 +152,10 @@ export interface NFe {
   xmlEnviado?: string
   xmlRetorno?: string
   xmlAutorizado?: string
+  xmlAutorizadoUrl?: string
   danfePdfPath?: string
   danfeUrl?: string
+  danfePdfUrl?: string
   xmlGerado?: string
   xmlGeradoUrl?: string
   xmlAssinado?: string
@@ -399,6 +401,11 @@ export interface NFeFilters {
   endDate?: string
   page?: number
   limit?: number
+  numero?: string
+  serie?: string
+  customerName?: string
+  dataInicio?: string
+  dataFim?: string
 }
 
 export interface NFeListResponse {
