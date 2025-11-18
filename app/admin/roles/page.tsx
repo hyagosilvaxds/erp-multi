@@ -1,3 +1,8 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -5,73 +10,260 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Search, Plus, MoreVertical, Shield } from "lucide-react"
-import Link from "next/link"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { 
+  Search, 
+  Plus, 
+  Shield, 
+  Loader2, 
+  X, 
+  Edit,
+  Users,
+  Trash2
+} from "lucide-react"
+import { rolesApi, type Role } from "@/lib/api/roles"
+import { authApi } from "@/lib/api/auth"
+import { useToast } from "@/hooks/use-toast"
 
 export default function RolesPage() {
-  const roles = [
-    {
-      id: 1,
-      name: "Super Admin",
-      description: "Acesso total ao sistema",
-      permissions: 45,
-      users: 3,
-      type: "system",
-      createdAt: "10/01/2024",
-    },
-    {
-      id: 2,
-      name: "Administrador",
-      description: "Gerencia empresa e usuários",
-      permissions: 32,
-      users: 12,
-      type: "custom",
-      createdAt: "15/01/2024",
-    },
-    {
-      id: 3,
-      name: "Gerente de Vendas",
-      description: "Acesso ao módulo de vendas",
-      permissions: 18,
-      users: 25,
-      type: "custom",
-      createdAt: "20/01/2024",
-    },
-    {
-      id: 4,
-      name: "Vendedor",
-      description: "Registro de vendas e clientes",
-      permissions: 12,
-      users: 67,
-      type: "custom",
-      createdAt: "22/01/2024",
-    },
-    {
-      id: 5,
-      name: "Financeiro",
-      description: "Gestão financeira e relatórios",
-      permissions: 15,
-      users: 8,
-      type: "custom",
-      createdAt: "25/01/2024",
-    },
-    {
-      id: 6,
-      name: "Estoque",
-      description: "Controle de produtos e estoque",
-      permissions: 10,
-      users: 15,
-      type: "custom",
-      createdAt: "28/01/2024",
-    },
-  ]
+  const router = useRouter()
+  const { toast } = useToast()
+
+  const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
+  const [roles, setRoles] = useState<Role[]>([])
+  const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null)
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+  })
+
+  // Debounce do termo de busca
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm)
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  // Carregar roles quando filtros mudam
+  useEffect(() => {
+    loadRoles()
+  }, [debouncedSearch])
+
+  const loadRoles = async () => {
+    try {
+      setSearching(true)
+      
+      const data = await rolesApi.getAll()
+      
+      console.log('✅ Roles carregadas:', data.length)
+      
+      // Filtrar no client se houver busca
+      const filtered = debouncedSearch
+        ? data.filter(role => 
+            role.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+            role.description?.toLowerCase().includes(debouncedSearch.toLowerCase())
+          )
+        : data
+      
+      setRoles(filtered)
+      
+      if (debouncedSearch) {
+        console.log(`🔍 Busca: "${debouncedSearch}" | Encontrados: ${filtered.length}`)
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao carregar roles:', error)
+      
+      toast({
+        title: "Erro ao carregar roles",
+        description: error.response?.data?.message || error.message || "Não foi possível carregar a lista de roles",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+      setSearching(false)
+    }
+  }
+
+  const handleClearSearch = () => {
+    setSearchTerm("")
+    setDebouncedSearch("")
+  }
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "-"
+    const date = new Date(dateString)
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+  }
+
+  const openCreateDialog = () => {
+    setFormData({ name: "", description: "" })
+    setShowCreateDialog(true)
+  }
+
+  const openEditDialog = (role: Role) => {
+    setSelectedRole(role)
+    setFormData({
+      name: role.name,
+      description: role.description || "",
+    })
+    setShowEditDialog(true)
+  }
+
+  const handleCreate = async () => {
+    if (!formData.name.trim()) {
+      toast({
+        title: "Campo obrigatório",
+        description: "O nome da role é obrigatório",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setCreating(true)
+
+      const newRole = await rolesApi.create({
+        name: formData.name,
+        description: formData.description || undefined,
+      })
+
+      toast({
+        title: "✅ Role criada!",
+        description: "Redirecionando para adicionar permissões...",
+      })
+
+      // Fechar dialog
+      setShowCreateDialog(false)
+
+      // Redirecionar para página de detalhes
+      router.push(`/admin/roles/${newRole.id}`)
+    } catch (error: any) {
+      console.error('❌ Erro ao criar role:', error)
+
+      toast({
+        title: "Erro ao criar role",
+        description: error.response?.data?.message || error.message || "Não foi possível criar a role",
+        variant: "destructive",
+      })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleUpdate = async () => {
+    if (!selectedRole) return
+
+    if (!formData.name.trim()) {
+      toast({
+        title: "Campo obrigatório",
+        description: "O nome da role é obrigatório",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setUpdating(true)
+
+      await rolesApi.update(selectedRole.id, {
+        name: formData.name,
+        description: formData.description || undefined,
+      })
+
+      toast({
+        title: "Role atualizada!",
+        description: "A role foi atualizada com sucesso.",
+      })
+
+      // Recarregar lista
+      await loadRoles()
+
+      // Fechar dialog
+      setShowEditDialog(false)
+      setSelectedRole(null)
+    } catch (error: any) {
+      console.error('❌ Erro ao atualizar role:', error)
+
+      toast({
+        title: "Erro ao atualizar role",
+        description: error.response?.data?.message || error.message || "Não foi possível atualizar a role",
+        variant: "destructive",
+      })
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const openDeleteDialog = (role: Role) => {
+    setSelectedRole(role)
+    setShowDeleteDialog(true)
+  }
+
+  const handleDelete = async () => {
+    if (!selectedRole) return
+
+    setDeleting(true)
+    try {
+      await rolesApi.delete(selectedRole.id)
+
+      toast({
+        title: "✅ Role deletada",
+        description: "A role foi deletada com sucesso",
+      })
+
+      // Recarregar lista
+      await loadRoles()
+
+      // Fechar dialog
+      setShowDeleteDialog(false)
+      setSelectedRole(null)
+    } catch (error: any) {
+      console.error('❌ Erro ao deletar role:', error)
+
+      const errorMessage = error.response?.data?.message || error.message || "Não foi possível deletar a role"
+      
+      toast({
+        title: "Erro ao deletar role",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <DashboardLayout userRole="admin">
@@ -79,99 +271,334 @@ export default function RolesPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Roles e Permissões</h1>
-            <p className="text-muted-foreground">Gerencie funções e permissões do sistema</p>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+              <Shield className="h-8 w-8" />
+              Gerenciamento de Roles
+            </h1>
+            <p className="text-muted-foreground">
+              Gerencie as roles e suas permissões do sistema
+            </p>
           </div>
-          <Link href="/admin/roles/nova">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Nova Role
-            </Button>
-          </Link>
+          <Button onClick={openCreateDialog}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Role
+          </Button>
         </div>
 
-        {/* Search */}
+        {/* Filtros e Busca */}
         <Card>
           <CardHeader>
-            <CardTitle>Buscar Roles</CardTitle>
-            <CardDescription>Encontre roles por nome ou descrição</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Buscar roles..." className="pl-10" />
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Roles</CardTitle>
+                <CardDescription>
+                  {loading ? (
+                    "Carregando..."
+                  ) : (
+                    <>
+                      {roles.length} role(s) encontrada(s)
+                      {debouncedSearch && ` para "${debouncedSearch}"`}
+                    </>
+                  )}
+                </CardDescription>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Roles Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Lista de Roles</CardTitle>
-            <CardDescription>Total de {roles.length} roles cadastradas</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Permissões</TableHead>
-                  <TableHead>Usuários</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Criado em</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {roles.map((role) => (
-                  <TableRow key={role.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                          <Shield className="h-5 w-5 text-primary" />
-                        </div>
-                        <span className="font-medium">{role.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate text-muted-foreground">{role.description}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{role.permissions} permissões</Badge>
-                    </TableCell>
-                    <TableCell>{role.users} usuários</TableCell>
-                    <TableCell>
-                      <Badge variant={role.type === "system" ? "default" : "secondary"}>
-                        {role.type === "system" ? "Sistema" : "Customizada"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{role.createdAt}</TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
-                          <DropdownMenuItem>Editar permissões</DropdownMenuItem>
-                          <DropdownMenuItem>Duplicar</DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive" disabled={role.type === "system"}>
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+            {/* Campo de busca */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por nome ou descrição..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-10"
+                />
+                {searchTerm && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7"
+                    onClick={handleClearSearch}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              {searching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+
+            {/* Tabela */}
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : !roles.length ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Shield className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">
+                  {searchTerm ? "Nenhuma role encontrada" : "Nenhuma role cadastrada"}
+                </h3>
+                <p className="text-muted-foreground mb-4">
+                  {searchTerm
+                    ? `Não encontramos roles com "${searchTerm}"`
+                    : "Crie a primeira role do sistema"}
+                </p>
+                {searchTerm ? (
+                  <Button variant="outline" onClick={handleClearSearch}>
+                    Limpar busca
+                  </Button>
+                ) : (
+                  <Button onClick={openCreateDialog}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Nova Role
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Descrição</TableHead>
+                    <TableHead>Permissões</TableHead>
+                    <TableHead>Usuários</TableHead>
+                    <TableHead>Criada em</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {roles.map((role) => (
+                    <TableRow key={role.id}>
+                      <TableCell className="font-medium">{role.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground max-w-md truncate">
+                        {role.description || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {role.permissions?.length || 0} permissões
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{role.usersCount || 0}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDate(role.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            asChild
+                          >
+                            <Link href={`/admin/roles/${role.id}`}>
+                              <Shield className="mr-2 h-4 w-4" />
+                              Detalhes
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(role)}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Editar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openDeleteDialog(role)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Deletar
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialog de Criar Role */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Criar Nova Role</DialogTitle>
+            <DialogDescription>
+              Defina o nome e descrição da nova role. Você poderá adicionar permissões na página de detalhes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="create-name">Nome *</Label>
+              <Input
+                id="create-name"
+                placeholder="Ex: support, manager, sales"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                maxLength={50}
+              />
+              <p className="text-xs text-muted-foreground">
+                Entre 2 e 50 caracteres. Deve ser único.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="create-description">Descrição</Label>
+              <Textarea
+                id="create-description"
+                placeholder="Descreva as responsabilidades desta role..."
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                maxLength={200}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Máximo 200 caracteres (opcional)
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+              💡 <strong>Dica:</strong> Após criar a role, clique em "Detalhes" para adicionar permissões específicas.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateDialog(false)}
+              disabled={creating}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={creating || !formData.name.trim()}
+            >
+              {creating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Criando...
+                </>
+              ) : (
+                "Criar Role"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Editar Role */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Editar Role</DialogTitle>
+            <DialogDescription>
+              Atualize o nome e descrição da role.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Nome *</Label>
+              <Input
+                id="edit-name"
+                placeholder="Ex: support, manager, sales"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                maxLength={50}
+              />
+              <p className="text-xs text-muted-foreground">
+                Entre 2 e 50 caracteres. Deve ser único.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Descrição</Label>
+              <Textarea
+                id="edit-description"
+                placeholder="Descreva as responsabilidades desta role..."
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                maxLength={200}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Máximo 200 caracteres (opcional)
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowEditDialog(false)}
+              disabled={updating}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleUpdate}
+              disabled={updating || !formData.name.trim()}
+            >
+              {updating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                "Salvar Alterações"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AlertDialog de Deletar Role */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja deletar a role <strong>{selectedRole?.name}</strong>?
+              {selectedRole?.usersCount && selectedRole.usersCount > 0 && (
+                <span className="block mt-2 text-destructive">
+                  ⚠️ Esta role possui {selectedRole.usersCount} usuário(s) vinculado(s).
+                </span>
+              )}
+              <span className="block mt-2">
+                Esta ação não pode ser desfeita.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deletando...
+                </>
+              ) : (
+                "Deletar"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   )
 }

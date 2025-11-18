@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { authApi } from "@/lib/api/auth"
 import {
   LayoutDashboard,
   Building2,
@@ -12,6 +13,7 @@ import {
   Settings,
   ChevronLeft,
   Package,
+  PackageCheck,
   BarChart3,
   CreditCard,
   ShoppingCart,
@@ -26,9 +28,13 @@ import {
   DollarSign,
   PieChart,
   UserCircle,
+  MapPin,
   FolderOpen,
   Plug,
   Scale,
+  ArrowRightLeft,
+  Briefcase,
+  FileCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -66,6 +72,7 @@ const companyMenuItems = [
     submenu: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/financeiro" },
       { icon: CreditCard, label: "Contas Bancárias", href: "/dashboard/financeiro/contas" },
+      { icon: FolderOpen, label: "Categorias", href: "/dashboard/financeiro/categorias" },
       { icon: FileSpreadsheet, label: "Extratos", href: "/dashboard/financeiro/extratos" },
       { icon: RefreshCw, label: "Conciliação", href: "/dashboard/financeiro/conciliacao" },
       { icon: Receipt, label: "Lançamentos", href: "/dashboard/financeiro/lancamentos" },
@@ -80,10 +87,12 @@ const companyMenuItems = [
     module: "investidores",
     submenu: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/investidores" },
-      { icon: Users, label: "Cadastro", href: "/dashboard/investidores/novo" },
+      { icon: Users, label: "Investidores", href: "/dashboard/investidores/novo" },
+      { icon: Briefcase, label: "Projetos", href: "/dashboard/investidores/projetos" },
       { icon: DollarSign, label: "Aportes", href: "/dashboard/investidores/aportes" },
       { icon: PieChart, label: "Políticas", href: "/dashboard/investidores/politicas" },
       { icon: TrendingUp, label: "Distribuições", href: "/dashboard/investidores/distribuicoes" },
+      { icon: FileSpreadsheet, label: "Relatórios", href: "/dashboard/investidores/relatorios" },
     ],
   },
   {
@@ -94,8 +103,11 @@ const companyMenuItems = [
     submenu: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/rh" },
       { icon: Users, label: "Colaboradores", href: "/dashboard/rh/colaboradores" },
+      { icon: Building2, label: "Departamentos", href: "/dashboard/rh/departamentos" },
+      { icon: UserPlus, label: "Cargos", href: "/dashboard/rh/cargos" },
       { icon: DollarSign, label: "Proventos & Descontos", href: "/dashboard/rh/proventos-descontos" },
       { icon: FileText, label: "Folha de Pagamento", href: "/dashboard/rh/folha" },
+      { icon: Receipt, label: "Tabelas Fiscais", href: "/dashboard/rh/tabelas-fiscais" },
     ],
   },
   {
@@ -105,8 +117,8 @@ const companyMenuItems = [
     module: "juridico",
     submenu: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/juridico" },
-      { icon: FileText, label: "Contratos", href: "/dashboard/juridico/contratos" },
-      { icon: Shield, label: "Processos", href: "/dashboard/juridico/processos" },
+      { icon: FileText, label: "Documentos", href: "/dashboard/juridico/documentos" },
+      { icon: FolderOpen, label: "Categorias", href: "/dashboard/juridico/categorias" },
     ],
   },
   {
@@ -121,7 +133,19 @@ const companyMenuItems = [
     ],
   },
   { icon: ShoppingCart, label: "Vendas", href: "/dashboard/vendas", module: "vendas" },
-  { icon: Package, label: "Produtos", href: "/dashboard/produtos", module: "produtos" },
+  { icon: FileCheck, label: "NF-e", href: "/dashboard/nfe", module: "nfe" },
+  {
+    icon: Package,
+    label: "Produtos",
+    href: "/dashboard/produtos",
+    module: "produtos",
+    submenu: [
+      { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/produtos" },
+      { icon: Package, label: "Lista de Produtos", href: "/dashboard/produtos/lista" },
+      { icon: PackageCheck, label: "Estoque", href: "/dashboard/produtos/estoque" },
+      { icon: Settings, label: "Configurações", href: "/dashboard/produtos/configuracoes" },
+    ],
+  },
   { icon: Users, label: "Clientes", href: "/dashboard/clientes", module: "clientes" },
   { icon: FileText, label: "Relatórios", href: "/dashboard/relatorios", module: "relatorios" },
   { icon: Settings, label: "Configurações", href: "/dashboard/configuracoes", module: "configuracoes" },
@@ -132,15 +156,34 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
   const [expandedMenus, setExpandedMenus] = useState<string[]>([])
   const pathname = usePathname()
   const router = useRouter()
+  
+  console.log('📊 Sidebar - userRole recebido:', userRole)
+  console.log('📊 Sidebar - pathname:', pathname)
+  
   const menuItems = userRole === "admin" ? adminMenuItems : companyMenuItems
 
   const [selectedCompany, setSelectedCompany] = useState<any>(null)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [userPermissions, setUserPermissions] = useState<string[]>([])
 
   useEffect(() => {
+    console.log('🔄 Sidebar useEffect - userRole:', userRole)
+    // Carregar usuário logado
+    const user = authApi.getUser()
+    setCurrentUser(user)
+
     if (userRole === "company") {
       const company = localStorage.getItem("selectedCompany")
       if (company) {
-        setSelectedCompany(JSON.parse(company))
+        const parsedCompany = JSON.parse(company)
+        setSelectedCompany(parsedCompany)
+        
+        // Extrair permissões do usuário
+        const permissions = parsedCompany?.role?.permissions || []
+        const permissionNames = permissions.map((p: any) => `${p.resource}.${p.action}`)
+        setUserPermissions(permissionNames)
+        
+        console.log('🔐 Permissões do usuário:', permissionNames)
       }
     }
   }, [userRole])
@@ -150,8 +193,7 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("selectedCompany")
-    router.push("/login")
+    authApi.logout()
   }
 
   const toggleSubmenu = (href: string) => {
@@ -160,6 +202,30 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
 
   const isSubmenuActive = (submenu: any[]) => {
     return submenu.some((item) => pathname === item.href)
+  }
+
+  // Verificar se o usuário tem permissão para acessar o módulo de documentos
+  const hasDocumentsPermission = (): boolean => {
+    // Admin sempre tem acesso
+    if (userRole === "admin") return true
+    
+    // Se não estiver no modo company, mostrar
+    if (userRole !== "company") return true
+    
+    // Verificar permissão de documents.read no backend
+    return userPermissions.includes('documents.read') || 
+           userPermissions.includes('documents.view')
+  }
+
+  // Verificar se o módulo deve ser exibido
+  const shouldShowModule = (module: string): boolean => {
+    // Apenas ocultar o módulo de documentos se não tiver permissão
+    if (module === 'documentos') {
+      return hasDocumentsPermission()
+    }
+    
+    // Todos os outros módulos são exibidos
+    return true
   }
 
   return (
@@ -199,7 +265,9 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
                     <Building2 className="h-4 w-4" />
                   </div>
                   <div className="flex-1 overflow-hidden text-left">
-                    <p className="truncate text-sm font-medium text-sidebar-foreground">{selectedCompany.name}</p>
+                    <p className="truncate text-sm font-medium text-sidebar-foreground">
+                      {selectedCompany.nomeFantasia || selectedCompany.razaoSocial}
+                    </p>
                     <p className="truncate text-xs text-muted-foreground">{selectedCompany.cnpj}</p>
                   </div>
                   <RefreshCw className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -219,7 +287,9 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {menuItems.map((item) => {
+          {menuItems
+            .filter((item) => shouldShowModule(item.module))
+            .map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
           const hasSubmenu = Array.isArray((item as any).submenu)
@@ -301,26 +371,22 @@ export function Sidebar({ userRole = "company" }: SidebarProps) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-auto w-full justify-start gap-3 p-0 hover:bg-transparent">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                    <span className="text-sm font-semibold">AD</span>
+                    <span className="text-sm font-semibold">
+                      {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : 'U'}
+                    </span>
                   </div>
                   <div className="flex-1 overflow-hidden text-left">
-                    <p className="truncate text-sm font-medium text-sidebar-foreground">Admin User</p>
-                    <p className="truncate text-xs text-muted-foreground">admin@empresa.com</p>
+                    <p className="truncate text-sm font-medium text-sidebar-foreground">
+                      {currentUser?.name || 'Usuário'}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {currentUser?.email || 'email@exemplo.com'}
+                    </p>
                   </div>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <Users className="mr-2 h-4 w-4" />
-                  Perfil
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Configurações
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
+
+              <DropdownMenuContent>
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sair

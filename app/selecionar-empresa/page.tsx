@@ -1,69 +1,120 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Building2, ChevronRight, Search, Users, Calendar, Shield } from "lucide-react"
+import { Building2, ChevronRight, Search, Users, Shield, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-
-interface Company {
-  id: string
-  name: string
-  cnpj: string
-  plan: string
-  users: number
-  lastAccess: string
-  userRole: string
-  department?: string
-  logo?: string
-}
+import { authApi, type Company } from "@/lib/api/auth"
+import { useToast } from "@/hooks/use-toast"
 
 export default function SelectCompanyPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [userName, setUserName] = useState("")
+  const [hasAdminRole, setHasAdminRole] = useState(false)
+  const [loading, setLoading] = useState(true)
 
-  const companies: Company[] = [
-    {
-      id: "1",
-      name: "Tech Solutions LTDA",
-      cnpj: "12.345.678/0001-90",
-      plan: "Premium",
-      users: 25,
-      lastAccess: "Hoje às 14:30",
-      userRole: "Administrador",
-      department: "TI",
-    },
-    {
-      id: "2",
-      name: "Comércio Digital ME",
-      cnpj: "98.765.432/0001-10",
-      plan: "Básico",
-      users: 8,
-      lastAccess: "Ontem às 09:15",
-      userRole: "Gerente de Vendas",
-      department: "Vendas",
-    },
-    {
-      id: "3",
-      name: "Indústria Moderna S.A.",
-      cnpj: "11.222.333/0001-44",
-      plan: "Enterprise",
-      users: 150,
-      lastAccess: "15/01/2025",
-      userRole: "Vendedor",
-      department: "Comercial",
-    },
-  ]
+  useEffect(() => {
+    // Verificar autenticação
+    if (!authApi.isAuthenticated()) {
+      router.push("/login")
+      return
+    }
+
+    // Função para carregar empresas
+    const loadCompanies = async () => {
+      try {
+        // Buscar empresas da API
+        const userCompanies = await authApi.getUserCompanies()
+
+        if (!userCompanies || userCompanies.length === 0) {
+          toast({
+            title: "Erro",
+            description: "Você não está associado a nenhuma empresa",
+            variant: "destructive",
+          })
+          authApi.logout()
+          return
+        }
+
+        // Obter nome do usuário
+        const user = authApi.getUser()
+        if (user) {
+          setUserName(user.name)
+        }
+
+        setCompanies(userCompanies)
+
+        // Verificar se tem role admin em alguma empresa
+        const isAdmin = userCompanies.some((company) => company.role.name === "admin")
+        setHasAdminRole(isAdmin)
+
+        setLoading(false)
+      } catch (error: any) {
+        toast({
+          title: "Erro ao carregar empresas",
+          description: error.message || "Não foi possível carregar suas empresas",
+          variant: "destructive",
+        })
+        setLoading(false)
+        // Aguardar um pouco antes de redirecionar para o usuário ver o erro
+        setTimeout(() => {
+          authApi.logout()
+        }, 2000)
+      }
+    }
+
+    loadCompanies()
+  }, [router, toast])
 
   const filteredCompanies = companies.filter(
-    (company) => company.name.toLowerCase().includes(searchTerm.toLowerCase()) || company.cnpj.includes(searchTerm),
+    (company) =>
+      company.nomeFantasia.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      company.razaoSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      company.cnpj.includes(searchTerm)
   )
 
   const handleSelectCompany = (company: Company) => {
-    localStorage.setItem("selectedCompany", JSON.stringify(company))
+    // Salvar empresa selecionada
+    authApi.setSelectedCompany(company)
+
+    toast({
+      title: "Empresa selecionada!",
+      description: `Acessando ${company.nomeFantasia}...`,
+    })
+
+    // Sempre redirecionar para /dashboard independente da role
     router.push("/dashboard")
+  }
+
+  const handleAdminAccess = () => {
+    // Buscar a primeira empresa onde o usuário é admin
+    const adminCompany = companies.find((company) => company.role.name === "admin")
+
+    if (adminCompany) {
+      authApi.setSelectedCompany(adminCompany)
+      router.push("/admin")
+    }
+  }
+
+  const handleLogout = () => {
+    authApi.logout()
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-muted-foreground">Carregando empresas...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -74,21 +125,25 @@ export default function SelectCompanyPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary">
             <Building2 className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground">Selecione uma Empresa</h1>
-          <p className="mt-2 text-muted-foreground">Escolha qual empresa você deseja acessar</p>
+          <h1 className="text-3xl font-bold text-foreground">Olá, {userName}!</h1>
+          <p className="mt-2 text-muted-foreground">
+            Selecione uma das {companies.length} {companies.length === 1 ? "empresa" : "empresas"} disponíveis
+          </p>
         </div>
 
         {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Buscar por nome ou CNPJ..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-12 pl-10 text-base"
-          />
-        </div>
+        {companies.length > 3 && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Buscar por nome ou CNPJ..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-12 pl-10 text-base"
+            />
+          </div>
+        )}
 
         {/* Companies List */}
         <div className="space-y-3">
@@ -106,35 +161,37 @@ export default function SelectCompanyPage() {
                 <div className="flex items-center gap-4 p-6">
                   {/* Logo */}
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Building2 className="h-7 w-7" />
+                    {company.logoUrl ? (
+                      <img
+                        src={company.logoUrl}
+                        alt={company.nomeFantasia}
+                        className="h-full w-full rounded-xl object-cover"
+                      />
+                    ) : (
+                      <Building2 className="h-7 w-7" />
+                    )}
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold text-foreground">{company.name}</h3>
-                      <Badge variant="secondary" className="text-xs">
-                        {company.plan}
-                      </Badge>
+                      <h3 className="text-lg font-semibold text-foreground">{company.nomeFantasia}</h3>
+                      {company.role.name === "admin" && (
+                        <Badge variant="default" className="text-xs">
+                          Admin
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">CNPJ: {company.cnpj}</p>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Shield className="h-3 w-3" />
-                        Seu cargo: <span className="font-medium text-foreground">{company.userRole}</span>
+                        Seu cargo:{" "}
+                        <span className="font-medium text-foreground">{company.role.description || company.role.name}</span>
                       </span>
-                      {company.department && (
-                        <span className="flex items-center gap-1">Departamento: {company.department}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Users className="h-3 w-3" />
-                        {company.users} usuários
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Último acesso: {company.lastAccess}
+                        {company.role.permissions.length} {company.role.permissions.length === 1 ? "permissão" : "permissões"}
                       </span>
                     </div>
                   </div>
@@ -148,15 +205,22 @@ export default function SelectCompanyPage() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-center gap-4 pt-4">
-          <Button variant="outline" onClick={() => router.push("/login")}>
-            Voltar ao Login
+        <div className="flex items-center justify-between gap-4 pt-4">
+          <Button variant="outline" onClick={handleLogout} className="gap-2">
+            <LogOut className="h-4 w-4" />
+            Sair
           </Button>
-          <Button variant="ghost" onClick={() => router.push("/admin")} className="text-muted-foreground">
-            Acessar como Administrador
-          </Button>
+
+          {/* Botão Admin - apenas se tiver role admin em alguma empresa */}
+          {hasAdminRole && (
+            <Button variant="default" onClick={handleAdminAccess} className="gap-2">
+              <Shield className="h-4 w-4" />
+              Acessar como Administrador
+            </Button>
+          )}
         </div>
       </div>
     </div>
   )
 }
+

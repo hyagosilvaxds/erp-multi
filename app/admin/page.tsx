@@ -1,61 +1,71 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Building2, Users, ArrowUpRight, ArrowDownRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { companiesApi, type CompanyAdmin } from "@/lib/api/auth"
+import { useToast } from "@/hooks/use-toast"
 
 export default function AdminDashboard() {
+  const { toast } = useToast()
+  const [companies, setCompanies] = useState<CompanyAdmin[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadCompanies()
+  }, [])
+
+  const loadCompanies = async () => {
+    try {
+      const response = await companiesApi.getAllCompanies()
+      
+      console.log('📦 Response da API:', response)
+      
+      // Garantir que sempre temos um array
+      const data = Array.isArray(response) ? response : (response as any)?.data || []
+      setCompanies(data)
+    } catch (error: any) {
+      toast({
+        title: "Erro ao carregar empresas",
+        description: error.message,
+        variant: "destructive",
+      })
+      setCompanies([]) // Garantir array vazio em caso de erro
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Calcular estatísticas
+  const totalCompanies = companies.length
+  const activeCompanies = companies.filter((c) => c.active).length
+  const totalUsers = companies.reduce((sum, c) => sum + c._count.users, 0)
+  
+  // Últimas 5 empresas cadastradas
+  const recentCompanies = [...companies]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5)
+
   const stats = [
     {
       title: "Total de Empresas",
-      value: "248",
-      trend: "up",
+      value: loading ? "..." : totalCompanies.toString(),
+      change: `${activeCompanies} ativas`,
+      trend: "up" as const,
       icon: Building2,
-      description: "vs. mês anterior",
+      description: "empresas cadastradas",
     },
     {
       title: "Usuários Ativos",
-    value: "12,543",
-    change: "+8.2%",
-      trend: "up",
+      value: loading ? "..." : totalUsers.toString(),
+      change: `em ${totalCompanies} empresas`,
+      trend: "up" as const,
       icon: Users,
-      description: "vs. mês anterior",
-    },
-  // Receita Mensal e Taxa de Crescimento ocultadas conforme solicitado
-  ]
-
-  const recentCompanies = [
-    {
-      id: 1,
-      name: "Tech Solutions Ltda",
-    users: 45,
-    status: "active",
-    },
-    {
-      id: 2,
-      name: "Comércio Digital SA",
-    users: 23,
-    status: "active",
-    },
-    {
-      id: 3,
-      name: "Indústria ABC",
-    users: 67,
-    status: "active",
-    },
-    {
-      id: 4,
-      name: "Serviços XYZ",
-    users: 8,
-    status: "trial",
-    },
-    {
-      id: 5,
-      name: "Logística Express",
-    users: 34,
-    status: "active",
-      
+      description: "usuários no sistema",
     },
   ]
 
@@ -116,30 +126,50 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentCompanies.map((company) => (
-                  <div
-                    key={company.id}
-                    className="flex items-center justify-between rounded-lg border border-border p-4"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <Building2 className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">{company.name}</p>
-                        <p className="text-sm text-muted-foreground">{company.users} usuários</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        {/* receita ocultada */}
-                      </div>
-                      <Badge variant={company.status === "active" ? "default" : "secondary"}>
-                        {company.status === "active" ? "Ativo" : "Trial"}
-                      </Badge>
-                    </div>
+                {loading ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Carregando empresas...
                   </div>
-                ))}
+                ) : recentCompanies.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Nenhuma empresa cadastrada
+                  </div>
+                ) : (
+                  recentCompanies.map((company) => (
+                    <div
+                      key={company.id}
+                      className="flex items-center justify-between rounded-lg border border-border p-4"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          {company.logoUrl ? (
+                            <img
+                              src={company.logoUrl}
+                              alt={company.nomeFantasia}
+                              className="h-full w-full rounded-lg object-cover"
+                            />
+                          ) : (
+                            <Building2 className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{company.nomeFantasia}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {company._count.users} {company._count.users === 1 ? "usuário" : "usuários"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">CNPJ: {company.cnpj}</p>
+                        </div>
+                        <Badge variant={company.active ? "default" : "secondary"}>
+                          {company.situacaoCadastral}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>

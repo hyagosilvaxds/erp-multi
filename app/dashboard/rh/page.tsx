@@ -6,50 +6,57 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Users, DollarSign, TrendingUp, FileText, Plus } from "lucide-react"
 import Link from "next/link"
-
-// Dados mockados
-const stats = {
-  totalColaboradores: 45,
-  colaboradoresAtivos: 42,
-  folhaMensal: 185000,
-  custoTotal: 245000, // com encargos
-}
-
-const colaboradoresRecentes = [
-  {
-    id: 1,
-    nome: "João Silva",
-    cargo: "Desenvolvedor Sênior",
-    admissao: "2025-01-15",
-    salario: 8500,
-    centroCusto: "TI",
-  },
-  {
-    id: 2,
-    nome: "Maria Santos",
-    cargo: "Gerente de Vendas",
-    admissao: "2024-11-20",
-    salario: 12000,
-    centroCusto: "Vendas",
-  },
-  {
-    id: 3,
-    nome: "Pedro Costa",
-    cargo: "Analista Financeiro",
-    admissao: "2025-02-01",
-    salario: 6500,
-    centroCusto: "Financeiro",
-  },
-]
-
-const resumoPorCentroCusto = [
-  { centro: "TI", colaboradores: 12, custoTotal: 95000 },
-  { centro: "Vendas", colaboradores: 15, custoTotal: 78000 },
-  { centro: "Financeiro", colaboradores: 8, custoTotal: 42000 },
-  { centro: "Administrativo", colaboradores: 10, custoTotal: 30000 },
-]
+import { useEffect, useState } from "react"
+import { employeesDashboardApi, type EmployeesDashboardData } from "@/lib/api/employees-dashboard"
+import { useToast } from "@/hooks/use-toast"
+import { Spinner } from "@/components/ui/spinner"
 
 export default function RHDashboard() {
+  const [data, setData] = useState<EmployeesDashboardData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    async function loadDashboard() {
+      try {
+        setLoading(true)
+        const result = await employeesDashboardApi.getDashboard()
+        console.log("Dashboard data:", result) // Debug: ver estrutura real
+        setData(result)
+      } catch (error: any) {
+        console.error("Erro ao carregar dashboard:", error)
+        toast({
+          title: "Erro ao carregar dashboard",
+          description: error.response?.data?.message || "Ocorreu um erro ao carregar os dados.",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadDashboard()
+  }, [toast])
+
+  if (loading) {
+    return (
+      <DashboardLayout userRole="company">
+        <div className="flex h-[50vh] items-center justify-center">
+          <Spinner className="h-8 w-8" />
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (!data) {
+    return (
+      <DashboardLayout userRole="company">
+        <div className="flex h-[50vh] items-center justify-center">
+          <p className="text-muted-foreground">Não foi possível carregar os dados do dashboard.</p>
+        </div>
+      </DashboardLayout>
+    )
+  }
   return (
     <DashboardLayout userRole="company">
       <div className="space-y-6">
@@ -75,8 +82,8 @@ export default function RHDashboard() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{stats.totalColaboradores}</div>
-              <p className="text-xs text-muted-foreground">{stats.colaboradoresAtivos} ativos</p>
+              <div className="text-2xl font-bold text-foreground">{data.employees?.total || 0}</div>
+              <p className="text-xs text-muted-foreground">{data.employees?.active || 0} ativos</p>
             </CardContent>
           </Card>
 
@@ -87,7 +94,10 @@ export default function RHDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-foreground">
-                {stats.folhaMensal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                {parseFloat(data.payroll?.monthlyTotal || "0").toLocaleString("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                })}
               </div>
               <p className="text-xs text-muted-foreground">Soma de salários</p>
             </CardContent>
@@ -100,9 +110,18 @@ export default function RHDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-foreground">
-                {stats.custoTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                {parseFloat(data.payroll?.totalCost || "0").toLocaleString("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                })}
               </div>
-              <p className="text-xs text-muted-foreground">INSS + FGTS + IRRF</p>
+              <p className="text-xs text-muted-foreground">
+                Encargos:{" "}
+                {parseFloat(data.charges?.total || "0").toLocaleString("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                })}
+              </p>
             </CardContent>
           </Card>
 
@@ -113,14 +132,12 @@ export default function RHDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-foreground">
-                {(stats.custoTotal - stats.folhaMensal).toLocaleString("pt-BR", {
+                {parseFloat(data.charges?.total || "0").toLocaleString("pt-BR", {
                   style: "currency",
                   currency: "BRL",
                 })}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {(((stats.custoTotal - stats.folhaMensal) / stats.folhaMensal) * 100).toFixed(1)}% sobre folha
-              </p>
+              <p className="text-xs text-muted-foreground">{data.charges?.percentage || "0"}% sobre folha</p>
             </CardContent>
           </Card>
         </div>
@@ -174,30 +191,42 @@ export default function RHDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {colaboradoresRecentes.map((colab) => (
-                  <div
-                    key={colab.id}
-                    className="flex items-center justify-between rounded-lg border border-border p-3"
-                  >
-                    <div>
-                      <p className="font-medium text-foreground">{colab.nome}</p>
-                      <p className="text-sm text-muted-foreground">{colab.cargo}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {colab.centroCusto}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          Admissão: {new Date(colab.admissao).toLocaleDateString("pt-BR")}
-                        </span>
+                {data.recentHires && data.recentHires.length > 0 ? (
+                  data.recentHires.map((hire) => (
+                    <div
+                      key={hire.id}
+                      className="flex items-center justify-between rounded-lg border border-border p-3"
+                    >
+                      <div>
+                        <p className="font-medium text-foreground">{hire.name}</p>
+                        <p className="text-sm text-muted-foreground">{hire.position}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className="text-xs">
+                            {hire.department || "Sem departamento"}
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs">
+                            {hire.contractType}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {hire.daysInCompany} dias na empresa
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-foreground">
+                          {parseFloat(hire.salary).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(hire.admissionDate).toLocaleDateString("pt-BR")}
+                        </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-foreground">
-                        {colab.salario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Nenhuma admissão recente nos últimos 90 dias
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -210,25 +239,34 @@ export default function RHDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {resumoPorCentroCusto.map((centro) => (
-                  <div
-                    key={centro.centro}
-                    className="flex items-center justify-between rounded-lg border border-border p-3"
-                  >
-                    <div>
-                      <p className="font-medium text-foreground">{centro.centro}</p>
-                      <p className="text-sm text-muted-foreground">{centro.colaboradores} colaboradores</p>
+                {data.byCostCenter && data.byCostCenter.length > 0 ? (
+                  data.byCostCenter.map((center) => (
+                    <div
+                      key={center.costCenterId}
+                      className="flex items-center justify-between rounded-lg border border-border p-3"
+                    >
+                      <div>
+                        <p className="font-medium text-foreground">
+                          <span className="font-mono text-sm">{center.code}</span> - {center.name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">{center.employeesCount} colaboradores</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-foreground">
+                          {parseFloat(center.totalCost).toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{center.percentageOfTotal}% do total</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-foreground">
-                        {centro.custoTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {((centro.custoTotal / stats.custoTotal) * 100).toFixed(1)}% do total
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Nenhum centro de custo com colaboradores
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
