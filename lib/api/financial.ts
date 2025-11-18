@@ -2129,6 +2129,19 @@ export interface ReconcileRequest {
   ofxFitId: string
 }
 
+export interface CreateTransactionFromOFXRequest {
+  ofxFitId: string
+  companyId: string
+  bankAccountId: string
+  type: 'RECEITA' | 'DESPESA'
+  transactionType: 'DINHEIRO' | 'TRANSFERENCIA' | 'BOLETO' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'PIX' | 'CHEQUE' | 'OUTROS'
+  categoryId?: string
+  centroCustoId?: string
+  contaContabilId?: string
+  description?: string
+  notes?: string
+}
+
 // ============================================
 // API OFX
 // ============================================
@@ -2258,6 +2271,23 @@ export const ofxApi = {
           'x-company-id': companyId,
         },
       })
+    } catch (error: any) {
+      throw error
+    }
+  },
+
+  /**
+   * Criar lançamento a partir de transação OFX
+   */
+  async createTransactionFromOFX(request: CreateTransactionFromOFXRequest): Promise<FinancialTransaction> {
+    try {
+      const { data } = await apiClient.post('/financial/ofx/create-transaction', request, {
+        headers: {
+          'x-company-id': request.companyId,
+        },
+      })
+
+      return data
     } catch (error: any) {
       throw error
     }

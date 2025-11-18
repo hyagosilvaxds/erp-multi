@@ -28,8 +28,17 @@ import {
   type OFXImportDetail,
   type OFXTransaction,
   type SimilarTransaction,
+  type CreateTransactionFromOFXRequest,
   bankAccountsApi,
-  type BankAccount
+  type BankAccount,
+  financialCategoriesApi,
+  type FinancialCategory,
+  centroCustoApi,
+  type CentroCusto,
+  planoContasApi,
+  contasContabeisApi,
+  type PlanoContas,
+  type ContaContabil,
 } from "@/lib/api/financial"
 import {
   Select,
@@ -63,12 +72,26 @@ export default function Conciliacao() {
   const [selectedTransaction, setSelectedTransaction] = useState<OFXTransaction | null>(null)
   const [similarTransactions, setSimilarTransactions] = useState<SimilarTransaction[]>([])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [categories, setCategories] = useState<FinancialCategory[]>([])
+  const [centrosCusto, setCentrosCusto] = useState<CentroCusto[]>([])
+  const [contasContabeis, setContasContabeis] = useState<ContaContabil[]>([])
+  const [planoContasPadrao, setPlanoContasPadrao] = useState<PlanoContas | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingSimilar, setLoadingSimilar] = useState(false)
   const [reconciling, setReconciling] = useState(false)
   const [showMatchDialog, setShowMatchDialog] = useState(false)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [selectedMatch, setSelectedMatch] = useState<SimilarTransaction | null>(null)
+  const [creatingTransaction, setCreatingTransaction] = useState(false)
+
+  // Form states para criar lançamento
+  const [transactionType, setTransactionType] = useState<'RECEITA' | 'DESPESA'>('DESPESA')
+  const [paymentMethod, setPaymentMethod] = useState<'DINHEIRO' | 'TRANSFERENCIA' | 'BOLETO' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'PIX' | 'CHEQUE' | 'OUTROS'>('PIX')
+  const [categoryId, setCategoryId] = useState<string>("")
+  const [centroCustoId, setCentroCustoId] = useState<string>("")
+  const [contaContabilId, setContaContabilId] = useState<string>("")
+  const [description, setDescription] = useState<string>("")
+  const [notes, setNotes] = useState<string>("")
 
   // Filtros
   const [filterBankAccount, setFilterBankAccount] = useState<string>("")
@@ -79,6 +102,9 @@ export default function Conciliacao() {
     if (selectedCompany?.id) {
       loadBankAccounts()
       loadImports()
+      loadCategories()
+      loadCentrosCusto()
+      loadPlanoContasAndContas()
     }
   }, [selectedCompany?.id])
 
@@ -89,6 +115,50 @@ export default function Conciliacao() {
       setBankAccounts(accounts)
     } catch (error: any) {
       console.error("Erro ao carregar contas bancárias:", error)
+    }
+  }
+
+  const loadCategories = async () => {
+    try {
+      if (!selectedCompany?.id) return
+      const data = await financialCategoriesApi.getAll(selectedCompany.id)
+      setCategories(data)
+    } catch (error: any) {
+      console.error("Erro ao carregar categorias:", error)
+    }
+  }
+
+  const loadCentrosCusto = async () => {
+    try {
+      if (!selectedCompany?.id) return
+      const response = await centroCustoApi.getAll({ 
+        companyId: selectedCompany.id,
+        ativo: true,
+        limit: 200,
+      })
+      setCentrosCusto(response.data)
+    } catch (error: any) {
+      console.error("Erro ao carregar centros de custo:", error)
+    }
+  }
+
+  const loadPlanoContasAndContas = async () => {
+    try {
+      if (!selectedCompany?.id) return
+      const plano = await planoContasApi.getPadrao(selectedCompany.id)
+      setPlanoContasPadrao(plano)
+      
+      if (plano?.id) {
+        const response = await contasContabeisApi.getAll(plano.id, {
+          page: 1,
+          limit: 200,
+        })
+        // Filtrar apenas contas que aceitam lançamento
+        const contasAceitamLancamento = response.data.filter((c: ContaContabil) => c.aceitaLancamento)
+        setContasContabeis(contasAceitamLancamento)
+      }
+    } catch (error: any) {
+      console.error("Erro ao carregar plano de contas:", error)
     }
   }
 
@@ -201,7 +271,62 @@ export default function Conciliacao() {
   }
 
   const handleCreateNew = () => {
+    // Resetar form
+    setTransactionType(selectedTransaction?.type === 'CREDIT' ? 'RECEITA' : 'DESPESA')
+    setPaymentMethod('PIX')
+    setCategoryId("")
+    setCentroCustoId("")
+    setContaContabilId("")
+    setDescription(selectedTransaction?.name || "")
+    setNotes(selectedTransaction?.memo || "")
     setShowCreateDialog(true)
+  }
+
+  const handleCreateTransaction = async () => {
+    if (!selectedCompany?.id || !selectedTransaction || !selectedImport?.bankAccountId) {
+      return
+    }
+
+    try {
+      setCreatingTransaction(true)
+
+      const request: CreateTransactionFromOFXRequest = {
+        ofxFitId: selectedTransaction.fitId,
+        companyId: selectedCompany.id,
+        bankAccountId: selectedImport.bankAccountId,
+        type: transactionType,
+        transactionType: paymentMethod,
+        categoryId: categoryId || undefined,
+        centroCustoId: centroCustoId || undefined,
+        contaContabilId: contaContabilId || undefined,
+        description: description || undefined,
+        notes: notes || undefined,
+      }
+
+      await ofxApi.createTransactionFromOFX(request)
+
+      toast({
+        title: "Lançamento criado com sucesso",
+        description: "O lançamento foi criado e conciliado automaticamente.",
+      })
+
+      // Fechar dialog e resetar
+      setShowCreateDialog(false)
+      setSelectedTransaction(null)
+      setSimilarTransactions([])
+
+      // Recarregar dados
+      await loadImports()
+    } catch (error: any) {
+      console.error("Erro ao criar lançamento:", error)
+      toast({
+        title: "Erro ao criar lançamento",
+        description: error.response?.data?.message || error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setCreatingTransaction(false)
+    }
   }
 
   const getScoreBadge = (score: number) => {
@@ -570,28 +695,19 @@ export default function Conciliacao() {
 
         {/* Dialog de Criar Novo Lançamento */}
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Criar Novo Lançamento</DialogTitle>
               <DialogDescription>
-                Crie um novo lançamento baseado na transação do extrato
+                Crie um novo lançamento baseado na transação do extrato OFX
               </DialogDescription>
             </DialogHeader>
 
             {selectedTransaction && (
               <div className="space-y-4">
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Funcionalidade em Desenvolvimento</AlertTitle>
-                  <AlertDescription>
-                    A criação de novos lançamentos diretamente da conciliação estará disponível em breve.
-                    Por enquanto, você pode criar o lançamento manualmente na tela de lançamentos e depois
-                    voltar aqui para conciliar.
-                  </AlertDescription>
-                </Alert>
-
+                {/* Dados da transação OFX */}
                 <div className="space-y-2">
-                  <Label>Dados da Transação OFX</Label>
+                  <Label className="text-sm font-medium">Dados da Transação OFX</Label>
                   <div className="p-4 rounded-lg bg-muted/50 space-y-2">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
@@ -600,7 +716,9 @@ export default function Conciliacao() {
                       </div>
                       <div>
                         <span className="text-muted-foreground">Valor:</span>
-                        <p className="font-medium">{formatCurrency(selectedTransaction.amount)}</p>
+                        <p className={`font-bold ${selectedTransaction.type === 'CREDIT' ? 'text-green-600' : 'text-red-600'}`}>
+                          {selectedTransaction.type === 'CREDIT' ? '+' : '-'} {formatCurrency(selectedTransaction.amount)}
+                        </p>
                       </div>
                       <div className="col-span-2">
                         <span className="text-muted-foreground">Descrição:</span>
@@ -615,18 +733,146 @@ export default function Conciliacao() {
                     </div>
                   </div>
                 </div>
+
+                <Separator />
+
+                {/* Formulário */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Tipo de Transação */}
+                    <div className="space-y-2">
+                      <Label htmlFor="type">Tipo de Lançamento *</Label>
+                      <Select value={transactionType} onValueChange={(value: any) => setTransactionType(value)}>
+                        <SelectTrigger id="type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="RECEITA">Receita</SelectItem>
+                          <SelectItem value="DESPESA">Despesa</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Método de Pagamento */}
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentMethod">Forma de Pagamento *</Label>
+                      <Select value={paymentMethod} onValueChange={(value: any) => setPaymentMethod(value)}>
+                        <SelectTrigger id="paymentMethod">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="DINHEIRO">Dinheiro</SelectItem>
+                          <SelectItem value="PIX">PIX</SelectItem>
+                          <SelectItem value="TRANSFERENCIA">Transferência</SelectItem>
+                          <SelectItem value="BOLETO">Boleto</SelectItem>
+                          <SelectItem value="CARTAO_CREDITO">Cartão de Crédito</SelectItem>
+                          <SelectItem value="CARTAO_DEBITO">Cartão de Débito</SelectItem>
+                          <SelectItem value="CHEQUE">Cheque</SelectItem>
+                          <SelectItem value="OUTROS">Outros</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Descrição */}
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Descrição</Label>
+                    <Input
+                      id="description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Deixe vazio para usar a descrição do OFX"
+                    />
+                  </div>
+
+                  {/* Categoria (opcional) */}
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Categoria (Opcional)</Label>
+                    <Select value={categoryId || undefined} onValueChange={(value) => setCategoryId(value || "")}>
+                      <SelectTrigger id="category">
+                        <SelectValue placeholder="Selecione uma categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.name} ({cat.type === 'RECEITA' ? 'Receita' : 'Despesa'})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Centro de Custo (opcional) */}
+                  <div className="space-y-2">
+                    <Label htmlFor="centroCusto">Centro de Custo (Opcional)</Label>
+                    <Select value={centroCustoId || undefined} onValueChange={(value) => setCentroCustoId(value || "")}>
+                      <SelectTrigger id="centroCusto">
+                        <SelectValue placeholder="Selecione um centro de custo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {centrosCusto.map((cc) => (
+                          <SelectItem key={cc.id} value={cc.id}>
+                            {cc.codigo} - {cc.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Conta Contábil (opcional) */}
+                  <div className="space-y-2">
+                    <Label htmlFor="contaContabil">Conta Contábil (Opcional)</Label>
+                    <Select value={contaContabilId || undefined} onValueChange={(value) => setContaContabilId(value || "")}>
+                      <SelectTrigger id="contaContabil">
+                        <SelectValue placeholder="Selecione uma conta contábil" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        {contasContabeis.map((conta) => (
+                          <SelectItem key={conta.id} value={conta.id}>
+                            {conta.codigo} - {conta.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Observações */}
+                  <div className="space-y-2">
+                    <Label htmlFor="notes">Observações</Label>
+                    <Input
+                      id="notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Observações adicionais"
+                    />
+                  </div>
+                </div>
+
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    O lançamento será criado com os dados da transação OFX (valor, data, etc) e será automaticamente conciliado.
+                  </AlertDescription>
+                </Alert>
               </div>
             )}
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                Fechar
+              <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={creatingTransaction}>
+                Cancelar
               </Button>
-              <Button onClick={() => {
-                setShowCreateDialog(false)
-                router.push('/dashboard/financeiro/lancamentos/novo')
-              }}>
-                Ir para Lançamentos
+              <Button onClick={handleCreateTransaction} disabled={creatingTransaction}>
+                {creatingTransaction ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Criando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Criar Lançamento
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
