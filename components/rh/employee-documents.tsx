@@ -301,7 +301,7 @@ export function EmployeeDocuments({ employeeId, employeeContractType }: Employee
 
       // Faz a requisição com autenticação
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/employees/${employeeId}/documents/${doc.id}/download`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'https://back.otimizeagenda.com'}/employees/${employeeId}/documents/${doc.id}/download`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
